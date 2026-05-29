@@ -30,24 +30,24 @@ struct ComputeEffect {
 };
 
 struct FrameData {
-	VkSemaphore _swapchainSemaphore, _renderSemaphore;
-	VkFence _renderFence;
+	VkSemaphore _swapchain_semaphore, _render_semaphore;
+	VkFence _render_fence;
 
-	VkCommandPool _commandPool;
-	VkCommandBuffer _mainCommandBuffer;
+	VkCommandPool _command_pool;
+	VkCommandBuffer _main_command_buffer;
 
-	DeletionQueue _deletionQueue;
-	DescriptorAllocatorGrowable _frameDescriptors;
+	DeletionQueue _deletion_queue;
+	DescriptorAllocatorGrowable _frame_descriptors;
 };
 
 
 class VulkanEngine {
 public:
 
-	bool _isInitialized{ false };
-	int _frameNumber {0};
+	bool _is_initialized{ false };
+	int _frame_number{ 0 };
 
-	VkExtent2D _windowExtent{ 1700 , 900 };
+	VkExtent2D _window_extent{ 1700 , 900 };
 
 	struct SDL_Window* _window{ nullptr };
 
@@ -65,80 +65,72 @@ public:
 
 	VkInstance _instance;// Vulkan library handle
 	VkDebugUtilsMessengerEXT _debug_messenger;// Vulkan debug output handle
-	VkPhysicalDevice _chosenGPU;// GPU chosen as the default device
+	VkPhysicalDevice _chosen_GPU;// GPU chosen as the default device
 	VkDevice _device; // Vulkan device for commands
 	VkSurfaceKHR _surface;// Vulkan window surface
 
 	VkSwapchainKHR _swapchain;
-	VkFormat _swapchainImageFormat;
+	VkFormat _swapchain_image_format;
 
-	std::vector<VkImage> _swapchainImages;
-	std::vector<VkImageView> _swapchainImageViews;
-	VkExtent2D _swapchainExtent;
+	std::vector<VkImage> _swapchain_images;
+	std::vector<VkImageView> _swapchain_image_views;
+	VkExtent2D _swapchain_extent;
 
 	FrameData _frames[FRAME_OVERLAP];
 
-	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
+	FrameData& get_current_frame() { return _frames[_frame_number % FRAME_OVERLAP]; };
 
-	VkQueue _graphicsQueue;
-	uint32_t _graphicsQueueFamily;
+	VkQueue _graphics_queue;
+	uint32_t _graphics_queue_family;
 
-	DeletionQueue _mainDeletionQueue;
+	DeletionQueue _main_deletion_queue;
 
 	VmaAllocator _allocator;
 
-	AllocatedImage _drawImage;
-	AllocatedImage _depthImage;
-	VkExtent2D _drawExtent;
-	float renderScale = 1.f;
+	AllocatedImage _draw_image;
+	AllocatedImage _depth_image;
+	VkExtent2D _draw_extent;
+	float render_scale = 1.f;
+	float cam_move_test = 5.0f;
 
 	bool stop_rendering{ false };
 
-	DescriptorAllocator globalDescriptorAllocator;
+	DescriptorAllocator global_descriptor_allocator;
 
-	VkDescriptorSet _drawImageDescriptors;
-	VkDescriptorSetLayout _drawImageDescriptorLayout;
+	VkDescriptorSet _draw_image_descriptors_allocator;
+	VkDescriptorSetLayout _draw_image_descriptor_layout;
 
-	VkPipeline _computePipeline;
-	VkPipelineLayout _computePipelineLayout;
+	VkPipeline _compute_pipeline;
+	VkPipelineLayout _compute_pipeline_layout;
 
-	VkFence _immFence;
-	VkCommandBuffer _immCommandBuffer;
-	VkCommandPool _immCommandPool;
+	VkFence _imm_fence;
+	VkCommandBuffer _imm_command_buffer;
+	VkCommandPool _imm_command_pool;
 
-	std::vector<ComputeEffect> backgroundEffects;
-	int currentBackgroundEffect{ 0 };
-
-	VkPipelineLayout _trianglePipelineLayout;
-	VkPipeline _trianglePipeline;
-
-	VkPipelineLayout _meshPipelineLayout;
-	VkPipeline _meshPipeline;
-
-	GPUMeshBuffers rectangle;
+	VkPipelineLayout _mesh_pipeline_layout;
+	VkPipeline _mesh_pipeline;
 
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
-	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 
 	bool resize_requested;
 
-	GPUSceneData sceneData;
+	GPUSceneData scene_data;
 
-	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+	VkDescriptorSetLayout _gpu_scene_data_descriptor_layout;
 
-	AllocatedImage _whiteImage;
-	AllocatedImage _blackImage;
-	AllocatedImage _greyImage;
-	AllocatedImage _errorCheckerboardImage;
+	AllocatedImage _error_checkerboard_image;
 
-	VkSampler _defaultSamplerLinear;
+	VkSampler _default_sampler_linear;
 	VkSampler _defaultSamplerNearest;
 
-	VkDescriptorSetLayout _singleImageDescriptorLayout;
+	VkDescriptorSetLayout _single_image_descriptor_layout;
+
+	VkClearColorValue clear_color;
 
 private:
-	
+
 	void init_vulkan();
 	void init_swapchain();
 	void init_commands();
@@ -151,15 +143,12 @@ private:
 	void init_descriptors();
 
 	void init_pipelines();
-	void init_background_pipelines();
 
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 	void init_imgui();
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
-
-	void init_triangle_pipeline();
 
 	void draw_geometry(VkCommandBuffer cmd);
 
