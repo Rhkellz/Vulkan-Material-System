@@ -1,6 +1,6 @@
 
 # Add source to this project's executable.
-add_executable(vulkan_guide
+add_executable(material_system
     main.cpp
     vk_engine.cpp
     vk_engine.h
@@ -15,15 +15,17 @@ add_executable(vulkan_guide
     vk_pipelines.cpp
     vk_loader.h
     vk_loader.cpp
-)
+    vk_swapchain.h
+    vk_swapchain.cpp
+ "vk_swapchain.cpp" "vk_swapchain.h")
 
 
-set_property(TARGET vulkan_guide PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:vulkan_guide>")
+set_property(TARGET material_system PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:material_system>")
 
-target_include_directories(vulkan_guide PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(vulkan_guide vkbootstrap vma glm tinyobjloader imgui stb_image fmt::fmt fastgltf)
+target_include_directories(material_system PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(material_system vkbootstrap vma glm tinyobjloader imgui stb_image fmt::fmt fastgltf)
 
-target_link_libraries(vulkan_guide Vulkan::Vulkan SDL2::SDL2)
-target_compile_definitions(vulkan_guide PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+target_link_libraries(material_system Vulkan::Vulkan SDL2::SDL2)
+target_compile_definitions(material_system PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
-add_dependencies(vulkan_guide Shaders)
+add_dependencies(material_system Shaders)

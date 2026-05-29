@@ -1,45 +1,74 @@
-﻿# CMakeList.txt : CMake project for vulkan_guide, include source and define
-# project specific logic here.
-#
-cmake_minimum_required (VERSION 3.8)
+﻿cmake_minimum_required(VERSION 3.8)
 
-project ("vulkan_guide")
+project("material_system")
 
 set(CMAKE_CXX_STANDARD 20)
 
 find_package(Vulkan REQUIRED)
 
 add_subdirectory(third_party)
-
-set (CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
-
 add_subdirectory(src)
 
+# =========================================================
+# OUTPUT DIR (FOR EXE + SHADERS)
+# =========================================================
+set(OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin")
 
-find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${OUTPUT_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${OUTPUT_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${OUTPUT_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${OUTPUT_DIR})
 
-## find all the shader files under the shaders folder
-file(GLOB_RECURSE GLSL_SOURCE_FILES
-    "${PROJECT_SOURCE_DIR}/shaders/*.frag"
-    "${PROJECT_SOURCE_DIR}/shaders/*.vert"
-    "${PROJECT_SOURCE_DIR}/shaders/*.comp"
+# =========================================================
+# GLSL COMPILER
+# =========================================================
+find_program(GLSL_VALIDATOR glslangValidator
+    HINTS
+    $ENV{VULKAN_SDK}/Bin/
+    $ENV{VULKAN_SDK}/Bin32/
+)
+
+# =========================================================
+# SHADER OUTPUT DIR (NEXT TO EXE)
+# =========================================================
+set(SHADER_DIR "${OUTPUT_DIR}/shaders")
+file(MAKE_DIRECTORY ${SHADER_DIR})
+
+# =========================================================
+# INPUT SHADERS
+# =========================================================
+file(GLOB GLSL_FILES
+    "${CMAKE_SOURCE_DIR}/shaders/*.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/*.comp"
+)
+
+# =========================================================
+# BUILD SHADERS
+# =========================================================
+set(SPIRV_OUTPUTS)
+
+foreach(GLSL ${GLSL_FILES})
+
+    get_filename_component(FILE_NAME ${GLSL} NAME)
+
+    set(SPIRV_FILE "${SHADER_DIR}/${FILE_NAME}.spv")
+
+    add_custom_command(
+        OUTPUT ${SPIRV_FILE}
+        COMMAND ${GLSL_VALIDATOR}
+        -V --target-env vulkan1.3
+        ${GLSL}
+        -o ${SPIRV_FILE}
+        DEPENDS ${GLSL}
+        COMMENT "Compiling shader ${FILE_NAME}"
     )
 
-## iterate each shader
-foreach(GLSL ${GLSL_SOURCE_FILES})
-  message(STATUS "BUILDING SHADER")
-  get_filename_component(FILE_NAME ${GLSL} NAME)
-  set(SPIRV "${PROJECT_SOURCE_DIR}/shaders/${FILE_NAME}.spv")
-  message(STATUS ${GLSL})
-  ##execute glslang command to compile that specific shader
-  add_custom_command(
-    OUTPUT ${SPIRV}
-    COMMAND ${GLSL_VALIDATOR} -V --target-env vulkan1.3 ${GLSL} -o ${SPIRV}
-    DEPENDS ${GLSL})
-  list(APPEND SPIRV_BINARY_FILES ${SPIRV})
-endforeach(GLSL)
+    list(APPEND SPIRV_OUTPUTS ${SPIRV_FILE})
 
-add_custom_target(
-    Shaders 
-    DEPENDS ${SPIRV_BINARY_FILES}
-    )
+endforeach()
+
+add_custom_target(Shaders ALL
+    DEPENDS ${SPIRV_OUTPUTS}
+)
