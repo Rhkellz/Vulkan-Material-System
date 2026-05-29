@@ -15,9 +15,9 @@ add_executable(material_system
     vk_pipelines.cpp
     vk_loader.h
     vk_loader.cpp
-    vk_swapchain.h
-    vk_swapchain.cpp
- "vk_swapchain.cpp" "vk_swapchain.h")
+    
+    
+)
 
 
 set_property(TARGET material_system PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:material_system>")
