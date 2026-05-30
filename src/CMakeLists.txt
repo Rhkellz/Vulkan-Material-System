@@ -15,8 +15,6 @@ add_executable(material_system
     vk_pipelines.cpp
     vk_loader.h
     vk_loader.cpp
-    
-    
 )
 
 
@@ -29,3 +27,9 @@ target_link_libraries(material_system Vulkan::Vulkan SDL2::SDL2)
 target_compile_definitions(material_system PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 add_dependencies(material_system Shaders)
+
+add_custom_command(TARGET material_system POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_SOURCE_DIR}/assets"
+    "$<TARGET_FILE_DIR:material_system>/assets"
+)
