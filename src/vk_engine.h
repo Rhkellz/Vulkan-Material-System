@@ -91,7 +91,12 @@ public:
 	AllocatedImage _depth_image;
 	VkExtent2D _draw_extent;
 	float render_scale = 1.f;
-	float cam_move_test = 5.0f;
+	float cam_move_test = 4.0f;
+	float orbit_angle = 0.0f;
+
+	std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();;
+	std::chrono::steady_clock::time_point curr_time;
+	int frame_time = 0;
 
 	bool stop_rendering{ false };
 
@@ -111,8 +116,11 @@ public:
 	VkPipeline _mesh_pipeline;
 
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+	AllocatedImage uploadTexture(std::filesystem::path filename);
 
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
+
+	std::vector<std::shared_ptr<MeshAsset>> sphere_mesh;
 
 	bool resize_requested;
 
@@ -121,6 +129,7 @@ public:
 	VkDescriptorSetLayout _gpu_scene_data_descriptor_layout;
 
 	AllocatedImage _error_checkerboard_image;
+	AllocatedImage _init_texture;
 
 	VkSampler _default_sampler_linear;
 	VkSampler _defaultSamplerNearest;

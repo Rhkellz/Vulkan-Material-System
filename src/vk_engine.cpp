@@ -7,16 +7,19 @@
 #include <vk_initializers.h>
 
 #include "VkBootstrap.h"
+#include <glm/gtx/transform.hpp>
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 constexpr bool bUseValidationLayers = true;
 
 
 void VulkanEngine::init()
 {
-	fmt::print("CWD: {}\n", std::filesystem::current_path().string());
 	// We initialize SDL and create a window with it. 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -30,6 +33,8 @@ void VulkanEngine::init()
 		_window_extent.height,
 		window_flags
 	);
+
+	prev_time = std::chrono::steady_clock::now();
 
 	init_vulkan();
 
@@ -367,6 +372,12 @@ void VulkanEngine::draw()
 
 	//increase the number of frames drawn
 	_frame_number++;
+	curr_time = std::chrono::steady_clock::now();
+
+	frame_time = std::chrono::duration_cast<std::chrono::milliseconds>(curr_time - prev_time).count();
+
+	prev_time = curr_time;
+
 }
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
@@ -424,7 +435,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	VkDescriptorSet imageSet = get_current_frame()._frame_descriptors.allocate(_device, _single_image_descriptor_layout);
 	{
 		DescriptorWriter writer;
-		writer.write_image(0, _error_checkerboard_image.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.write_image(0, _init_texture.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 		writer.update_set(_device, imageSet);
 	}
@@ -434,19 +445,22 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0,-cam_move_test });
 	// camera projection
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
+	glm::mat4 orbit = glm::rotate(glm::mat4(1.f), glm::radians(orbit_angle), glm::vec3(0, 1, 0));
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis
 	projection[1][1] *= -1;
 
 	GPUDrawPushConstants push_constants;
-	push_constants.worldMatrix = projection * view;
-	push_constants.vertexBuffer = test_meshes[2]->meshBuffers.vertexBufferAddress;
+	push_constants.worldMatrix = projection * view * orbit;
+	push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
 
-	vkCmdPushConstants(cmd, _mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-	vkCmdBindIndexBuffer(cmd, test_meshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-	vkCmdDrawIndexed(cmd, test_meshes[2]->surfaces[0].count, 1, test_meshes[2]->surfaces[0].startIndex, 0, 0);
+	if (!sphere_mesh.empty() && !sphere_mesh[0]->surfaces.empty()) {
+		push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
+		vkCmdPushConstants(cmd, _mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+		vkCmdBindIndexBuffer(cmd, sphere_mesh[0]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(cmd, sphere_mesh[0]->surfaces[0].count, 1, sphere_mesh[0]->surfaces[0].startIndex, 0, 0);
+	}
 
 	vkCmdEndRendering(cmd);
 }
@@ -490,6 +504,8 @@ void VulkanEngine::run()
 		if (ImGui::Begin("background")) {
 			ImGui::SliderFloat("Render Scale", &render_scale, 0.3f, 1.f);
 			ImGui::SliderFloat("Move Cam", &cam_move_test, 0.0f, 10.0f);
+			ImGui::SliderFloat("Orbit Cam", &orbit_angle, -360.0f, 360.0f);
+			ImGui::Text("Frame Time: %d", frame_time);
 		}
 		ImGui::End();
 
@@ -790,8 +806,8 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
 }
 
 void VulkanEngine::init_mesh_pipeline() {
-	std::string frag_path = "C:/Users/rowan/Documents/code/Vulkan/material_system/material_system/bin/shaders/main_frag.frag.spv";
-	std::string vert_path = "C:/Users/rowan/Documents/code/Vulkan/material_system/material_system/bin/shaders/main_vert.vert.spv";
+	std::string frag_path = "shaders/main_frag.frag.spv";
+	std::string vert_path = "shaders/main_vert.vert.spv";
 
 
 	VkShaderModule frag_shader;
@@ -857,10 +873,16 @@ void VulkanEngine::init_mesh_pipeline() {
 void VulkanEngine::init_default_data() {
 	clear_color = { {0.1, 0.1, 0.1, 1.0} };
 
-	test_meshes = loadGltfMeshes(this, "C:/Users/rowan/Documents/code/Vulkan/material_system/material_system/assets/basicmesh.glb").value();
+	test_meshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
+	sphere_mesh = loadGltfMeshes(this, "assets/icosphere.glb").value();
 
 	_main_deletion_queue.push_function([&]() {
 		for (auto& mesh : test_meshes) {
+			destroy_buffer(mesh->meshBuffers.indexBuffer);
+			destroy_buffer(mesh->meshBuffers.vertexBuffer);
+		}
+
+		for (auto& mesh : sphere_mesh) {
 			destroy_buffer(mesh->meshBuffers.indexBuffer);
 			destroy_buffer(mesh->meshBuffers.vertexBuffer);
 		}
@@ -880,11 +902,13 @@ void VulkanEngine::init_default_data() {
 	std::array<uint32_t, 16 * 16 > pixels; //for 16x16 checkerboard texture
 	for (int x = 0; x < 16; x++) {
 		for (int y = 0; y < 16; y++) {
-			pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+			pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? black : magenta;
 		}
 	}
 	_error_checkerboard_image = create_image(pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	_init_texture = uploadTexture("assets/image1.jpg");
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
@@ -902,7 +926,9 @@ void VulkanEngine::init_default_data() {
 		vkDestroySampler(_device, _default_sampler_linear, nullptr);
 
 		destroy_image(_error_checkerboard_image);
+		destroy_image(_init_texture);
 		});
+
 }
 
 void VulkanEngine::resize_swapchain()
@@ -996,4 +1022,28 @@ void VulkanEngine::destroy_image(const AllocatedImage& img)
 {
 	vkDestroyImageView(_device, img.imageView, nullptr);
 	vmaDestroyImage(_allocator, img.image, img.allocation);
+}
+
+AllocatedImage VulkanEngine::uploadTexture(std::filesystem::path filename) {
+	int img_width = 0;
+	int img_height = 0;
+	int img_channels = 0;
+
+	stbi_uc* pixels = stbi_load(filename.string().c_str(), &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+
+	if (pixels == nullptr) {
+		throw std::runtime_error("Failed to load texture");
+	}
+
+	VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM; // maybe change
+	VkExtent3D tex_extent;
+	tex_extent.width = img_width;
+	tex_extent.height = img_height;
+	tex_extent.depth = 1;
+
+	VkImageUsageFlags tex_flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;// add more for mip
+
+	AllocatedImage result = create_image(pixels, tex_extent, tex_format, tex_flags, false);
+	stbi_image_free(pixels);
+	return result;
 }
