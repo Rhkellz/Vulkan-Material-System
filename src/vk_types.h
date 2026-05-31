@@ -52,6 +52,14 @@ struct DeletionQueue {
 	}
 };
 
+struct Context {
+	VkInstance instance; // Vulkan library handle
+	VkDebugUtilsMessengerEXT debug_messenger; // Vulkan debug output handle
+	VkPhysicalDevice chosen_GPU; // GPU chosen as the default device
+	VkDevice device; // Vulkan device for commands
+	VkSurfaceKHR surface; // Vulkan window surface
+};
+
 struct AllocatedImage {
     VkImage image;
     VkImageView imageView;
@@ -87,11 +95,14 @@ struct GPUDrawPushConstants {
 	VkDeviceAddress vertexBuffer;
 };
 
-struct GPUSceneData {
-	glm::mat4 view;
-	glm::mat4 proj;
-	glm::mat4 viewproj;
-	glm::vec4 ambientColor;
-	glm::vec4 sunlightDirection; // w for sun power
-	glm::vec4 sunlightColor;
+struct GPUSceneData {// dont need too many matrices for the static(ish) scene
+	glm::mat4 model;
+	glm::vec4 light_dir; // w for sun power
+	glm::vec4 light_col;
+};
+
+struct Material {
+	AllocatedImage albedo;
+	AllocatedImage normal_map;
+	//VkDescriptorSet material_descriptor;
 };

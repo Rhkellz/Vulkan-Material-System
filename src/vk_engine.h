@@ -63,11 +63,7 @@ public:
 	//run main loop
 	void run();
 
-	VkInstance _instance;// Vulkan library handle
-	VkDebugUtilsMessengerEXT _debug_messenger;// Vulkan debug output handle
-	VkPhysicalDevice _chosen_GPU;// GPU chosen as the default device
-	VkDevice _device; // Vulkan device for commands
-	VkSurfaceKHR _surface;// Vulkan window surface
+	Context _context;
 
 	VkSwapchainKHR _swapchain;
 	VkFormat _swapchain_image_format;
@@ -90,9 +86,10 @@ public:
 	AllocatedImage _draw_image;
 	AllocatedImage _depth_image;
 	VkExtent2D _draw_extent;
+
 	float render_scale = 1.f;
 	float cam_move_test = 4.0f;
-	float orbit_angle = 0.0f;
+	float rotation_angle = 0.0f;
 
 	std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();;
 	std::chrono::steady_clock::time_point curr_time;
@@ -131,6 +128,8 @@ public:
 	AllocatedImage _error_checkerboard_image;
 	AllocatedImage _init_texture;
 
+	std::vector<AllocatedImage> _textures;
+
 	VkSampler _default_sampler_linear;
 	VkSampler _defaultSamplerNearest;
 
@@ -138,6 +137,11 @@ public:
 
 	VkClearColorValue clear_color;
 
+	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+
+	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+
+	void destroy_image(const AllocatedImage& img);
 private:
 
 	void init_vulkan();
@@ -170,10 +174,4 @@ private:
 	void init_default_data();
 
 	void resize_swapchain();
-
-	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
-	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
-	void destroy_image(const AllocatedImage& img);
 };

@@ -7,9 +7,6 @@
 #include "vk_types.h"
 #include <glm/gtx/quaternion.hpp>
 
-#include <fastgltf/glm_element_traits.hpp>
-#include <fastgltf/parser.hpp>
-#include <fastgltf/tools.hpp>
 
 #include "vk_engine.h"
 
@@ -130,4 +127,83 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
     }
 
     return meshes;
+}
+
+AllocatedImage load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image) {
+    AllocatedImage new_image{};
+
+    auto load_from_bytes = [&](const std::byte* bytes_ptr, size_t total_length, size_t offset) {
+        int width, height, channels;
+        const stbi_uc* data_ptr = reinterpret_cast<const stbi_uc*>(bytes_ptr) + offset;
+
+        unsigned char* data = stbi_load_from_memory(
+            data_ptr,
+            static_cast<int>(total_length),
+            &width, &height, &channels,
+            STBI_rgb_alpha
+        );
+
+        if (data) {
+            VkExtent3D extent{ (uint32_t)width, (uint32_t)height, 1 };
+            new_image = engine->create_image(data, extent, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+            stbi_image_free(data);
+        }
+        };
+
+    std::visit(fastgltf::visitor{
+        [](auto& arg) {},
+
+        [&](fastgltf::sources::BufferView& view) {
+            auto& buffer_view = asset.bufferViews[view.bufferViewIndex];
+            auto& buffer = asset.buffers[buffer_view.bufferIndex];
+
+            std::visit(fastgltf::visitor{
+                [](auto& arg) {},
+                [&](fastgltf::sources::ByteView& arr) {
+                    load_from_bytes(arr.bytes.data(), buffer_view.byteLength, buffer_view.byteOffset);
+                },
+                [&](fastgltf::sources::Vector& vec) {
+                    // This is the path your asset uses!
+                    load_from_bytes(reinterpret_cast<const std::byte*>(vec.bytes.data()), buffer_view.byteLength, buffer_view.byteOffset);
+                }
+            }, buffer.data);
+        },
+
+        [&](fastgltf::sources::ByteView& arr) {
+            load_from_bytes(arr.bytes.data(), arr.bytes.size(), 0);
+        },
+
+        [&](fastgltf::sources::Vector& vec) {
+            load_from_bytes(reinterpret_cast<const std::byte*>(vec.bytes.data()), vec.bytes.size(), 0);
+        }
+        }, image.data);
+
+    return new_image;
+}
+
+std::optional<std::vector<AllocatedImage>> loadGltfTextures(VulkanEngine* engine, std::filesystem::path filePath) {
+    fastgltf::GltfDataBuffer data;
+    data.loadFromFile(filePath);
+
+    constexpr auto gltfOptions = fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers;
+
+    fastgltf::Asset gltf;
+    fastgltf::Parser parser{};
+
+    auto load = parser.loadBinaryGLTF(&data, filePath.parent_path(), gltfOptions);
+    if (!load) return {};
+    gltf = std::move(load.get());
+
+    std::vector<AllocatedImage> images;
+    for (fastgltf::Image& image : gltf.images) {
+        AllocatedImage img = load_image_from_gltf(engine, gltf, image);
+
+        if (img.imageView == VK_NULL_HANDLE) {
+            throw std::runtime_error("gLTF Loader Error: Image loaded with a NULL VkImageView");
+        }
+
+        images.push_back(img);
+    }
+
+    return images;
 }
