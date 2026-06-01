@@ -17,6 +17,8 @@ add_executable(material_system
     vk_loader.cpp
     vk_buffers.h
     vk_buffers.cpp
+    vk_swapchain.h
+    vk_swapchain.cpp
 )
 
 

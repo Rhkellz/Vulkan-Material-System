@@ -60,6 +60,9 @@ struct Context {
 	VkSurfaceKHR surface; // Vulkan window surface
 	VmaAllocator allocator; // allocator
 	std::function<void(const std::function<void(VkCommandBuffer)>&)> immediate_submit;
+
+	VkExtent2D window_extent;
+	struct SDL_Window* window;
 };
 
 struct AllocatedImage {

@@ -20,25 +20,11 @@ constexpr bool bUseValidationLayers = true;
 
 void VulkanEngine::init()
 {
-	// We initialize SDL and create a window with it. 
-	SDL_Init(SDL_INIT_VIDEO);
-
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-
-	_window = SDL_CreateWindow(
-		"Material System",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		_window_extent.width,
-		_window_extent.height,
-		window_flags
-	);
-
-	prev_time = std::chrono::steady_clock::now();
-
 	init_vulkan();
 
-	init_swapchain();
+	_vk_swapchain.init_swapchain(_context);
+
+	init_images();
 
 	init_commands();
 
@@ -59,6 +45,25 @@ void VulkanEngine::init()
 void VulkanEngine::init_vulkan()
 {
 	Context context;
+
+	// We initialize SDL and create a window with it. 
+	SDL_Init(SDL_INIT_VIDEO);
+
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+
+	context.window_extent = { 1700 , 900 };
+
+	context.window = SDL_CreateWindow(
+		"Material System",
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		context.window_extent.width,
+		context.window_extent.height,
+		window_flags
+	);
+
+	prev_time = std::chrono::steady_clock::now();
+
 	vkb::InstanceBuilder builder;
 
 	//make the vulkan instance, with basic debug feature
@@ -77,7 +82,7 @@ void VulkanEngine::init_vulkan()
 		this->immediate_submit(std::move(mutable_func));
 		};
 
-	SDL_Vulkan_CreateSurface(_window, context.instance, &context.surface);
+	SDL_Vulkan_CreateSurface(context.window, context.instance, &context.surface);
 
 	// now we activate needed features
 
@@ -130,14 +135,13 @@ void VulkanEngine::init_vulkan()
 		});
 }
 
-void VulkanEngine::init_swapchain()
+void VulkanEngine::init_images()
 {
-	create_swapchain(_window_extent.width, _window_extent.height);
 
 	//depth image size will match the window
 	VkExtent3D drawImageExtent = {
-		_window_extent.width,
-		_window_extent.height,
+		_context.window_extent.width,
+		_context.window_extent.height,
 		1
 	};
 
@@ -262,7 +266,7 @@ void VulkanEngine::cleanup()
 
 		_main_deletion_queue.flush();
 
-		destroy_swapchain();
+		_vk_swapchain.destroy_swapchain();
 
 		vkDestroySurfaceKHR(_context.instance, _context.surface, nullptr);
 		vkDestroyDevice(_context.device, nullptr);
@@ -270,7 +274,7 @@ void VulkanEngine::cleanup()
 		vkb::destroy_debug_utils_messenger(_context.instance, _context.debug_messenger);
 		vkDestroyInstance(_context.instance, nullptr);
 
-		SDL_DestroyWindow(_window);
+		SDL_DestroyWindow(_context.window);
 	}
 }
 
@@ -289,7 +293,7 @@ void VulkanEngine::draw()
 	get_current_frame()._frame_descriptors.clear_pools(_context.device);
 
 	uint32_t swapchainImageIndex;
-	VkResult e = vkAcquireNextImageKHR(_context.device, _swapchain, 1000000000, get_current_frame()._swapchain_semaphore, nullptr, &swapchainImageIndex);
+	VkResult e = vkAcquireNextImageKHR(_context.device, _vk_swapchain._swapchain, 1000000000, get_current_frame()._swapchain_semaphore, nullptr, &swapchainImageIndex);
 	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
 		resize_requested = true;
 		return;
@@ -307,8 +311,8 @@ void VulkanEngine::draw()
 	//start the command buffer recording
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	_draw_extent.height = std::min(_swapchain_extent.height, _draw_image.imageExtent.height) * render_scale;
-	_draw_extent.width = std::min(_swapchain_extent.width, _draw_image.imageExtent.width) * render_scale;
+	_draw_extent.height = std::min(_vk_swapchain._swapchain_extent.height, _draw_image.imageExtent.height) * render_scale;
+	_draw_extent.width = std::min(_vk_swapchain._swapchain_extent.width, _draw_image.imageExtent.width) * render_scale;
 
 	// transition our main draw image into general layout so we can write into it
 	// we will overwrite it all so we dont care about what was the older layout
@@ -323,21 +327,21 @@ void VulkanEngine::draw()
 
 	//transition the draw image and the swapchain image into their correct transfer layouts
 	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	vkutil::transition_image(cmd, _swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	vkutil::transition_image(cmd, _vk_swapchain._swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 
 	// execute a copy from the draw image into the swapchain
-	vkutil::copy_image_to_image(cmd, _draw_image.image, _swapchain_images[swapchainImageIndex], _draw_extent, _swapchain_extent);
+	vkutil::copy_image_to_image(cmd, _draw_image.image, _vk_swapchain._swapchain_images[swapchainImageIndex], _draw_extent, _vk_swapchain._swapchain_extent);
 
 	// switch to COLOR_ATTACHMENT_OPTIMAL for imgui
-	vkutil::transition_image(cmd, _swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vkutil::transition_image(cmd, _vk_swapchain._swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	//draw imgui into the swapchain image
-	draw_imgui(cmd, _swapchain_image_views[swapchainImageIndex]);
+	draw_imgui(cmd, _vk_swapchain._swapchain_image_views[swapchainImageIndex]);
 
 
 	// set swapchain image layout to Present so we can show it on the screen
-	vkutil::transition_image(cmd, _swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	vkutil::transition_image(cmd, _vk_swapchain._swapchain_images[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	// finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
@@ -364,7 +368,7 @@ void VulkanEngine::draw()
 	VkPresentInfoKHR presentInfo = {};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.pNext = nullptr;
-	presentInfo.pSwapchains = &_swapchain;
+	presentInfo.pSwapchains = &_vk_swapchain._swapchain;
 	presentInfo.swapchainCount = 1;
 
 	presentInfo.pWaitSemaphores = &get_current_frame()._render_semaphore;
@@ -501,7 +505,7 @@ void VulkanEngine::run()
 		}
 
 		if (resize_requested) {
-			resize_swapchain();
+			_vk_swapchain.resize_swapchain(resize_requested);
 		}
 
 		// imgui new frame
@@ -520,43 +524,6 @@ void VulkanEngine::run()
 		ImGui::Render();
 
 		draw();
-	}
-}
-
-void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
-{
-	vkb::SwapchainBuilder swapchainBuilder{ _context.chosen_GPU, _context.device, _context.surface };
-
-	_swapchain_image_format = VK_FORMAT_B8G8R8A8_UNORM;
-
-	VkSurfaceFormatKHR desiredFormat{};
-	desiredFormat.format = _swapchain_image_format;
-	desiredFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-	swapchainBuilder.set_desired_format(desiredFormat);
-
-	vkb::Swapchain vkbSwapchain = swapchainBuilder
-		//.use_default_format_selection()
-		.set_desired_format(desiredFormat)
-		//use vsync present mode
-		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR) // important, vsync
-		.set_desired_extent(width, height)
-		.add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-		.build()
-		.value();
-
-	_swapchain_extent = vkbSwapchain.extent;
-	//store swapchain and its related images
-	_swapchain = vkbSwapchain.swapchain;
-	_swapchain_images = vkbSwapchain.get_images().value();
-	_swapchain_image_views = vkbSwapchain.get_image_views().value();
-}
-
-void VulkanEngine::destroy_swapchain()
-{
-	vkDestroySwapchainKHR(_context.device, _swapchain, nullptr);
-
-	for (size_t i = 0; i < _swapchain_images.size(); i++) {
-		vkDestroyImageView(_context.device, _swapchain_image_views[i], nullptr);//dont need to destroy _swapchain_images as vkDestroySwapchainKHR already does
 	}
 }
 
@@ -694,7 +661,7 @@ void VulkanEngine::init_imgui()
 	ImGui::CreateContext();
 
 	// this initializes imgui for SDL
-	ImGui_ImplSDL2_InitForVulkan(_window);
+	ImGui_ImplSDL2_InitForVulkan(_context.window);
 
 	// this initializes imgui for Vulkan
 	ImGui_ImplVulkan_InitInfo init_info = {};
@@ -710,7 +677,7 @@ void VulkanEngine::init_imgui()
 	//dynamic rendering parameters for imgui to use
 	init_info.PipelineRenderingCreateInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &_swapchain_image_format;
+	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &_vk_swapchain._swapchain_image_format;
 
 
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
@@ -729,7 +696,7 @@ void VulkanEngine::init_imgui()
 void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
 {
 	VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	VkRenderingInfo renderInfo = vkinit::rendering_info(_swapchain_extent, &colorAttachment, nullptr);
+	VkRenderingInfo renderInfo = vkinit::rendering_info(_vk_swapchain._swapchain_extent, &colorAttachment, nullptr);
 
 	vkCmdBeginRendering(cmd, &renderInfo);
 
@@ -933,22 +900,6 @@ void VulkanEngine::init_default_data() {
 			vkutil::destroy_image(_context, mat.albedo);
 		}
 		});
-}
-
-void VulkanEngine::resize_swapchain()
-{
-	vkDeviceWaitIdle(_context.device);
-
-	destroy_swapchain();
-
-	int w, h;
-	SDL_GetWindowSize(_window, &w, &h);
-	_window_extent.width = w;
-	_window_extent.height = h;
-
-	create_swapchain(_window_extent.width, _window_extent.height);
-
-	resize_requested = false;
 }
 
 AllocatedImage VulkanEngine::uploadTexture(std::filesystem::path filename) {

@@ -1,4 +1,5 @@
 #include <vk_engine.h>
+#undef main // fixes linker error with sdl
 
 int main(int argc, char* argv[])
 {

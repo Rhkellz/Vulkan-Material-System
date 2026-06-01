@@ -7,6 +7,7 @@
 #include "vk_descriptors.h"
 #include "vk_pipelines.h"
 #include "vk_loader.h"
+#include "vk_swapchain.h"
 
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
@@ -48,10 +49,6 @@ public:
 	bool _is_initialized{ false };
 	int _frame_number{ 0 };
 
-	VkExtent2D _window_extent{ 1700 , 900 };
-
-	struct SDL_Window* _window{ nullptr };
-
 	//initializes everything in the engine
 	void init();
 
@@ -66,12 +63,7 @@ public:
 
 	Context _context;
 
-	VkSwapchainKHR _swapchain;
-	VkFormat _swapchain_image_format;
-
-	std::vector<VkImage> _swapchain_images;
-	std::vector<VkImageView> _swapchain_image_views;
-	VkExtent2D _swapchain_extent;
+	VulkanSwapchain _vk_swapchain;
 
 	FrameData _frames[FRAME_OVERLAP];
 
@@ -139,12 +131,9 @@ public:
 private:
 
 	void init_vulkan();
-	void init_swapchain();
+	void init_images();
 	void init_commands();
 	void init_sync_structures();
-
-	void create_swapchain(uint32_t width, uint32_t height);
-	void destroy_swapchain();
 
 	void draw_background(VkCommandBuffer cmd);
 	void init_descriptors();
@@ -160,8 +149,6 @@ private:
 	void init_mesh_pipeline();
 
 	void init_default_data();
-
-	void resize_swapchain();
 
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 };
