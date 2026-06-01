@@ -2,6 +2,14 @@
 .vs/
 *.VC.db
 *.VC.opendb
+*.pdb
+*.ilk
+*.exe
+*.lib
+*.obj
+.vs/
+out/
+build/
 
 # Build folders
 build/
