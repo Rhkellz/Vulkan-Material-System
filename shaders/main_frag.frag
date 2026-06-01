@@ -20,6 +20,7 @@ layout(set = 1, binding = 0) uniform Scene_data {
 void main() 
 {
 	vec4 tex = texture(display_texture,in_uv);
+
 	vec3 col = tex.xyz;
 	float alpha = tex.a;
 

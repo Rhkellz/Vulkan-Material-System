@@ -24,6 +24,6 @@ class VulkanEngine;
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, std::filesystem::path filePath);
 
-AllocatedImage load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
+AllocatedImage load_image_from_gltf(const Context& context, fastgltf::Asset& asset, fastgltf::Image& image);
 
-std::optional<std::vector<AllocatedImage>> loadGltfTextures(VulkanEngine* engine, std::filesystem::path filePath);
+std::optional<std::vector<Material>> loadGltfTextures(const Context& context, std::filesystem::path filePath);

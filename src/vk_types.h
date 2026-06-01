@@ -58,6 +58,8 @@ struct Context {
 	VkPhysicalDevice chosen_GPU; // GPU chosen as the default device
 	VkDevice device; // Vulkan device for commands
 	VkSurfaceKHR surface; // Vulkan window surface
+	VmaAllocator allocator; // allocator
+	std::function<void(const std::function<void(VkCommandBuffer)>&)> immediate_submit;
 };
 
 struct AllocatedImage {

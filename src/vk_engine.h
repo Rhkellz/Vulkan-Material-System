@@ -2,6 +2,7 @@
 
 #include "vk_types.h"
 #include "vk_images.h"
+#include "vk_buffers.h"
 #include "vk_initializers.h"
 #include "vk_descriptors.h"
 #include "vk_pipelines.h"
@@ -81,8 +82,6 @@ public:
 
 	DeletionQueue _main_deletion_queue;
 
-	VmaAllocator _allocator;
-
 	AllocatedImage _draw_image;
 	AllocatedImage _depth_image;
 	VkExtent2D _draw_extent;
@@ -128,7 +127,7 @@ public:
 	AllocatedImage _error_checkerboard_image;
 	AllocatedImage _init_texture;
 
-	std::vector<AllocatedImage> _textures;
+	std::vector<Material> _materials;
 
 	VkSampler _default_sampler_linear;
 	VkSampler _defaultSamplerNearest;
@@ -137,11 +136,6 @@ public:
 
 	VkClearColorValue clear_color;
 
-	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
-	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
-	void destroy_image(const AllocatedImage& img);
 private:
 
 	void init_vulkan();
@@ -157,21 +151,17 @@ private:
 
 	void init_pipelines();
 
-	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
-
 	void init_imgui();
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 	void draw_geometry(VkCommandBuffer cmd);
 
-	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-
-	void destroy_buffer(const AllocatedBuffer& buffer);
-
 	void init_mesh_pipeline();
 
 	void init_default_data();
 
 	void resize_swapchain();
+
+	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 };

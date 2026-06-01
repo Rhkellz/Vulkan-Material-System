@@ -129,7 +129,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
     return meshes;
 }
 
-AllocatedImage load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image) {
+AllocatedImage load_image_from_gltf(const Context& context, fastgltf::Asset& asset, fastgltf::Image& image) {
     AllocatedImage new_image{};
 
     auto load_from_bytes = [&](const std::byte* bytes_ptr, size_t total_length, size_t offset) {
@@ -145,7 +145,7 @@ AllocatedImage load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset
 
         if (data) {
             VkExtent3D extent{ (uint32_t)width, (uint32_t)height, 1 };
-            new_image = engine->create_image(data, extent, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+            new_image = vkutil::create_image(context, data, extent, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true);
             stbi_image_free(data);
         }
         };
@@ -181,7 +181,7 @@ AllocatedImage load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset
     return new_image;
 }
 
-std::optional<std::vector<AllocatedImage>> loadGltfTextures(VulkanEngine* engine, std::filesystem::path filePath) {
+std::optional<std::vector<Material>> loadGltfTextures(const Context& context, std::filesystem::path filePath) {
     fastgltf::GltfDataBuffer data;
     data.loadFromFile(filePath);
 
@@ -194,16 +194,18 @@ std::optional<std::vector<AllocatedImage>> loadGltfTextures(VulkanEngine* engine
     if (!load) return {};
     gltf = std::move(load.get());
 
-    std::vector<AllocatedImage> images;
+    std::vector<Material> materials;
     for (fastgltf::Image& image : gltf.images) {
-        AllocatedImage img = load_image_from_gltf(engine, gltf, image);
+        Material mat;
+        AllocatedImage img = load_image_from_gltf(context, gltf, image);
 
         if (img.imageView == VK_NULL_HANDLE) {
             throw std::runtime_error("gLTF Loader Error: Image loaded with a NULL VkImageView");
         }
-
-        images.push_back(img);
+        mat.albedo = img;
+        materials.push_back(mat);
     }
 
-    return images;
+    return materials;
 }
+
