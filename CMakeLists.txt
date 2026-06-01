@@ -1,12 +1,12 @@
-<<<<<<< HEAD
-﻿cmake_minimum_required(VERSION 3.8)
-
+cmake_minimum_required(VERSION 3.8)
 project("material_system")
 
 set(CMAKE_CXX_STANDARD 20)
 
+# Find Vulkan SDK
 find_package(Vulkan REQUIRED)
 
+# Include subdirectories
 add_subdirectory(third_party)
 add_subdirectory(src)
 
@@ -15,11 +15,22 @@ add_subdirectory(src)
 # =========================================================
 set(OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin")
 
+# Force executables to go directly into /bin (no /Debug or /Release subfolders)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${OUTPUT_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${OUTPUT_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${OUTPUT_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${OUTPUT_DIR})
+
+# Fix for multi-configuration generators (like Visual Studio) to prevent subfolders
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${OUTPUTCONFIG} INTDIR)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${INTDIR} ${OUTPUT_DIR})
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${INTDIR} ${OUTPUT_DIR})
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${INTDIR} ${OUTPUT_DIR})
+endforeach()
 
 # =========================================================
 # GLSL COMPILER
@@ -40,9 +51,9 @@ file(MAKE_DIRECTORY ${SHADER_DIR})
 # INPUT SHADERS
 # =========================================================
 file(GLOB GLSL_FILES
-    "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-    "${CMAKE_SOURCE_DIR}/shaders/*.frag"
-    "${CMAKE_SOURCE_DIR}/shaders/*.comp"
+    "../shaders/*.vert"
+    "../shaders/*.frag"
+    "../shaders/*.comp"
 )
 
 # =========================================================
@@ -73,45 +84,10 @@ endforeach()
 add_custom_target(Shaders ALL
     DEPENDS ${SPIRV_OUTPUTS}
 )
-=======
-﻿cmake_minimum_required(VERSION 3.8)
-project("material_system")
-set(CMAKE_CXX_STANDARD 20)
-find_package(Vulkan REQUIRED)
-add_subdirectory(third_party)
 
-set(OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${OUTPUT_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${OUTPUT_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${OUTPUT_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${OUTPUT_DIR})
-
-find_program(GLSL_VALIDATOR glslangValidator
-    HINTS $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
-
-set(SHADER_DIR "${OUTPUT_DIR}/shaders")
-file(MAKE_DIRECTORY ${SHADER_DIR})
-
-file(GLOB GLSL_FILES
-    "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-    "${CMAKE_SOURCE_DIR}/shaders/*.frag"
-    "${CMAKE_SOURCE_DIR}/shaders/*.comp"
+add_custom_command(
+    TARGET Shaders POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_SOURCE_DIR}/shaders"
+    "${OUTPUT_DIR}/shaders"
 )
-
-set(SPIRV_OUTPUTS)
-foreach(GLSL ${GLSL_FILES})
-    get_filename_component(FILE_NAME ${GLSL} NAME)
-    set(SPIRV_FILE "${SHADER_DIR}/${FILE_NAME}.spv")
-    add_custom_command(
-        OUTPUT ${SPIRV_FILE}
-        COMMAND ${GLSL_VALIDATOR} -V --target-env vulkan1.3 ${GLSL} -o ${SPIRV_FILE}
-        DEPENDS ${GLSL}
-    )
-    list(APPEND SPIRV_OUTPUTS ${SPIRV_FILE})
-endforeach()
-
-add_custom_target(Shaders ALL DEPENDS ${SPIRV_OUTPUTS})
-
-add_subdirectory(src)
->>>>>>> 2852e5d (basic diffuse + texture)
