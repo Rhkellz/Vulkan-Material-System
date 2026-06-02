@@ -22,7 +22,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
 
-
+#include "vk_mem_alloc.h"
 
 
 #define VK_CHECK(x)                                                     \
@@ -66,11 +66,11 @@ struct Context {
 };
 
 struct AllocatedImage {
-    VkImage image;
-    VkImageView imageView;
-    VmaAllocation allocation;
-    VkExtent3D imageExtent;
-    VkFormat imageFormat;
+    VkImage image = VK_NULL_HANDLE;
+    VkImageView imageView = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+	VkExtent3D imageExtent = {};
+    VkFormat imageFormat = VK_FORMAT_UNDEFINED;
 };
 
 struct AllocatedBuffer {
@@ -85,6 +85,7 @@ struct Vertex {
 	glm::vec3 normal;
 	float uv_y;
 	glm::vec4 color;
+	glm::vec4 tangent;
 };
 
 // holds the resources needed for a mesh
@@ -107,7 +108,7 @@ struct GPUSceneData {// dont need too many matrices for the static(ish) scene
 };
 
 struct Material {
-	AllocatedImage albedo;
-	AllocatedImage normal_map;
+	AllocatedImage albedo = {};
+	AllocatedImage normal_map = {};
 	//VkDescriptorSet material_descriptor;
 };

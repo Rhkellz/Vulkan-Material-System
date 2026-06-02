@@ -8,6 +8,7 @@
 #include "vk_pipelines.h"
 #include "vk_loader.h"
 #include "vk_swapchain.h"
+#include "vk_materials.h"
 
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
@@ -103,9 +104,6 @@ public:
 	VkPipelineLayout _mesh_pipeline_layout;
 	VkPipeline _mesh_pipeline;
 
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-	AllocatedImage uploadTexture(std::filesystem::path filename);
-
 	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 
 	std::vector<std::shared_ptr<MeshAsset>> sphere_mesh;
@@ -117,14 +115,13 @@ public:
 	VkDescriptorSetLayout _gpu_scene_data_descriptor_layout;
 
 	AllocatedImage _error_checkerboard_image;
-	AllocatedImage _init_texture;
 
-	std::vector<Material> _materials;
+	VulkanMaterial _vk_materials;
 
 	VkSampler _default_sampler_linear;
 	VkSampler _defaultSamplerNearest;
 
-	VkDescriptorSetLayout _single_image_descriptor_layout;
+	VkDescriptorSetLayout _material_descriptor_layout;
 
 	VkClearColorValue clear_color;
 

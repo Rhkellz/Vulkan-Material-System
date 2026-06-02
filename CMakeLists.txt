@@ -51,9 +51,9 @@ file(MAKE_DIRECTORY ${SHADER_DIR})
 # INPUT SHADERS
 # =========================================================
 file(GLOB GLSL_FILES
-    "../shaders/*.vert"
-    "../shaders/*.frag"
-    "../shaders/*.comp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vert"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.frag"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.comp"
 )
 
 # =========================================================
@@ -90,4 +90,11 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${CMAKE_SOURCE_DIR}/shaders"
     "${OUTPUT_DIR}/shaders"
+)
+
+add_custom_command(
+    TARGET Shaders POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_SOURCE_DIR}/assets"
+    "${OUTPUT_DIR}/assets"
 )

@@ -7,8 +7,62 @@
 #include "vk_types.h"
 #include <glm/gtx/quaternion.hpp>
 
-
+#include "vk_mem_alloc.h"
 #include "vk_engine.h"
+
+GPUMeshBuffers upload_mesh(const Context& context, std::span<uint32_t> indices, std::span<Vertex> vertices)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+    GPUMeshBuffers newSurface;
+
+    //create vertex buffer
+    newSurface.vertexBuffer = vkutil::create_buffer(context, vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    //find the adress of the vertex buffer
+    VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
+    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(context.device, &deviceAdressInfo);
+
+    //create index buffer
+    newSurface.indexBuffer = vkutil::create_buffer(context, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    AllocatedBuffer staging = vkutil::create_buffer(context, vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+
+    VmaAllocationInfo allocInfo;
+    vmaGetAllocationInfo(context.allocator, staging.allocation, &allocInfo);
+
+    void* data = allocInfo.pMappedData;
+
+    // copy vertex buffer
+    memcpy(data, vertices.data(), vertexBufferSize);
+    // copy index buffer
+    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+
+    context.immediate_submit([&](VkCommandBuffer cmd) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.size = indexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        });
+
+    vkutil::destroy_buffer(context, staging);
+
+    return newSurface;
+}
+
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, std::filesystem::path filePath) {
     std::cout << "Loading GLTF: " << filePath << std::endl;
@@ -111,6 +165,9 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
                         vertices[initial_vtx + index].color = v;
                     });
             }
+
+            calculate_tangents(indices, vertices);
+
             newmesh.surfaces.push_back(newSurface);
         }
 
@@ -121,7 +178,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
                 vtx.color = glm::vec4(vtx.normal, 1.f);
             }
         }
-        newmesh.meshBuffers = engine->uploadMesh(indices, vertices);
+        newmesh.meshBuffers = upload_mesh(engine->_context, indices, vertices);
 
         meshes.emplace_back(std::make_shared<MeshAsset>(std::move(newmesh)));
     }
@@ -209,3 +266,67 @@ std::optional<std::vector<Material>> loadGltfTextures(const Context& context, st
     return materials;
 }
 
+AllocatedImage uploadTexture(const Context& context,std::filesystem::path filename) {
+    int img_width = 0;
+    int img_height = 0;
+    int img_channels = 0;
+
+    stbi_uc* pixels = stbi_load(filename.string().c_str(), &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+
+    if (pixels == nullptr) {
+        throw std::runtime_error("Failed to load texture");
+    }
+
+    VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM; // maybe change
+    VkExtent3D tex_extent;
+    tex_extent.width = img_width;
+    tex_extent.height = img_height;
+    tex_extent.depth = 1;
+
+    VkImageUsageFlags tex_flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;// add more for mip
+
+    AllocatedImage result = vkutil::create_image(context, pixels, tex_extent, tex_format, tex_flags, false);
+    stbi_image_free(pixels);
+    return result;
+}
+
+void calculate_tangents(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices) {
+    for (int i = 0; i < indices.size(); i += 3) {
+        uint32_t idx1 = indices[i];
+        uint32_t idx2 = indices[i + 1];
+        uint32_t idx3 = indices[i + 2];
+
+        glm::vec3 p1 = vertices[idx1].position;
+        glm::vec3 p2 = vertices[idx2].position;
+        glm::vec3 p3 = vertices[idx3].position;
+
+        glm::vec2 uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
+        glm::vec2 uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
+        glm::vec2 uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
+
+        glm::vec3 d_p1 = p2 - p1;
+        glm::vec3 d_p2 = p3 - p1;
+
+        glm::vec2 d_uv1 = uv2 - uv1;
+        glm::vec2 d_uv2 = uv3 - uv1;
+
+        float coeff = 1 / (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
+
+        glm::vec3 tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
+        glm::vec3 bitangent = coeff * (-d_uv2.x * d_p1 + d_uv1.x * d_p2);
+
+        float h1 = (glm::dot(glm::cross(vertices[idx1].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        vertices[idx1].tangent += glm::vec4(tangent, h1);
+
+        float h2 = (glm::dot(glm::cross(vertices[idx2].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        vertices[idx2].tangent += glm::vec4(tangent, h2);
+
+        float h3 = (glm::dot(glm::cross(vertices[idx3].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        vertices[idx3].tangent += glm::vec4(tangent, h3);
+    }
+
+    for (auto& v : vertices) {
+        v.tangent = glm::normalize(v.tangent);
+    }
+
+}

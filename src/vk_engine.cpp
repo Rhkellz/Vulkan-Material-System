@@ -1,4 +1,9 @@
-﻿#include "vk_engine.h"
+﻿#define VMA_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+#include <stb_image.h>
+
+#include "vk_engine.h"
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
@@ -9,11 +14,6 @@
 #include "VkBootstrap.h"
 #include <glm/gtx/transform.hpp>
 
-#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
 
 constexpr bool bUseValidationLayers = true;
 
@@ -23,6 +23,8 @@ void VulkanEngine::init()
 	init_vulkan();
 
 	_vk_swapchain.init_swapchain(_context);
+
+	_vk_materials.init_materials(_context);
 
 	init_images();
 
@@ -402,6 +404,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 		});
 
 	//write the buffer
+
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData();
 	scene_data.model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
 	*sceneUniformData = scene_data;
@@ -444,12 +447,23 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline);
 
 	//bind a texture
-	VkDescriptorSet imageSet = get_current_frame()._frame_descriptors.allocate(_context.device, _single_image_descriptor_layout);
-	{
-		DescriptorWriter writer;
-		writer.write_image(0, _materials[0].albedo.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	VkDescriptorSet imageSet = get_current_frame()._frame_descriptors.allocate(_context.device, _material_descriptor_layout);
+	if (!_vk_materials.materials_empty()) {
+		{
+			DescriptorWriter writer;
+			writer.write_image(0, _vk_materials._materials[0].albedo.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(1, _vk_materials._materials[0].normal_map.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			
+			writer.update_set(_context.device, imageSet);
+		}
+	}
+	else {
+		{
+			DescriptorWriter writer;
+			writer.write_image(0, _error_checkerboard_image.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-		writer.update_set(_context.device, imageSet);
+			writer.update_set(_context.device, imageSet);
+		}
 	}
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 0, 1, &imageSet, 0, nullptr);
@@ -589,11 +603,12 @@ void VulkanEngine::init_descriptors()
 	{
 		DescriptorLayoutBuilder builder;
 		builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		_single_image_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_FRAGMENT_BIT);
+		builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 
 	_main_deletion_queue.push_function([&]() {
-		vkDestroyDescriptorSetLayout(_context.device, _single_image_descriptor_layout, nullptr);
+		vkDestroyDescriptorSetLayout(_context.device, _material_descriptor_layout, nullptr);
 		});
 }
 
@@ -705,55 +720,6 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
 	vkCmdEndRendering(cmd);
 }
 
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
-{
-	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-	GPUMeshBuffers newSurface;
-
-	//create vertex buffer
-	newSurface.vertexBuffer = vkutil::create_buffer(_context, vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VMA_MEMORY_USAGE_GPU_ONLY);
-
-	//find the adress of the vertex buffer
-	VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
-	newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_context.device, &deviceAdressInfo);
-
-	//create index buffer
-	newSurface.indexBuffer = vkutil::create_buffer(_context, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VMA_MEMORY_USAGE_GPU_ONLY);
-
-	AllocatedBuffer staging = vkutil::create_buffer(_context, vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-
-	void* data = staging.allocation->GetMappedData();
-
-	// copy vertex buffer
-	memcpy(data, vertices.data(), vertexBufferSize);
-	// copy index buffer
-	memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
-
-	immediate_submit([&](VkCommandBuffer cmd) {
-		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = 0;
-		vertexCopy.srcOffset = 0;
-		vertexCopy.size = vertexBufferSize;
-
-		vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-
-		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = 0;
-		indexCopy.srcOffset = vertexBufferSize;
-		indexCopy.size = indexBufferSize;
-
-		vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
-		});
-
-	vkutil::destroy_buffer(_context, staging);
-
-	return newSurface;
-}
-
 void VulkanEngine::init_mesh_pipeline() {
 	std::string frag_path = "shaders/main_frag.frag.spv";
 	std::string vert_path = "shaders/main_vert.vert.spv";
@@ -776,7 +742,7 @@ void VulkanEngine::init_mesh_pipeline() {
 	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-	VkDescriptorSetLayout layouts[] = { _single_image_descriptor_layout, _gpu_scene_data_descriptor_layout };
+	VkDescriptorSetLayout layouts[] = { _material_descriptor_layout, _gpu_scene_data_descriptor_layout };
 
 	pipeline_layout_info.pPushConstantRanges = &bufferRange;
 	pipeline_layout_info.pushConstantRangeCount = 1;
@@ -859,8 +825,6 @@ void VulkanEngine::init_default_data() {
 	_error_checkerboard_image = vkutil::create_image(_context, (void*)pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT, false);
 
-	_init_texture = uploadTexture("assets/image1.jpg");
-
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	sampl.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	sampl.minLod = 0.0f;
@@ -880,48 +844,17 @@ void VulkanEngine::init_default_data() {
 		vkDestroySampler(_context.device, _default_sampler_linear, nullptr);
 
 		vkutil::destroy_image(_context, _error_checkerboard_image);
-		vkutil::destroy_image(_context, _init_texture);
 		});
 
 	GPUSceneData default_data;
 	default_data.light_dir = glm::vec4(1.0, 1.0, 1.0, 1.0);
 	default_data.light_col = glm::vec4(1.0, 1.0, 1.0, 1.0);
-	default_data.model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
 	scene_data = default_data;
 
-	_materials = loadGltfTextures(_context, "assets/icosphere.glb").value();
+	_vk_materials.upload_material("assets/bricks");
 
-	if (_materials.empty()) {
-		fmt::print("material vector empty");
-	}
 
 	_main_deletion_queue.push_function([&]() {
-		for (auto& mat : _materials) {
-			vkutil::destroy_image(_context, mat.albedo);
-		}
+		_vk_materials.destroy_materials();
 		});
-}
-
-AllocatedImage VulkanEngine::uploadTexture(std::filesystem::path filename) {
-	int img_width = 0;
-	int img_height = 0;
-	int img_channels = 0;
-
-	stbi_uc* pixels = stbi_load(filename.string().c_str(), &img_width, &img_height, &img_channels, STBI_rgb_alpha);
-
-	if (pixels == nullptr) {
-		throw std::runtime_error("Failed to load texture");
-	}
-
-	VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM; // maybe change
-	VkExtent3D tex_extent;
-	tex_extent.width = img_width;
-	tex_extent.height = img_height;
-	tex_extent.depth = 1;
-
-	VkImageUsageFlags tex_flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;// add more for mip
-
-	AllocatedImage result = vkutil::create_image(_context, pixels, tex_extent, tex_format, tex_flags, false);
-	stbi_image_free(pixels);
-	return result;
 }

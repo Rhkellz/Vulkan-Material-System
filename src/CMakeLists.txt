@@ -19,13 +19,15 @@ add_executable(material_system
     vk_buffers.cpp
     vk_swapchain.h
     vk_swapchain.cpp
+    vk_materials.h
+    vk_materials.cpp
 )
 
 
 set_property(TARGET material_system PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:material_system>")
 
 target_include_directories(material_system PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(material_system vkbootstrap vma glm tinyobjloader imgui stb_image fmt::fmt fastgltf)
+target_link_libraries(material_system vkbootstrap vma glm stb_image tinyobjloader imgui fmt::fmt fastgltf)
 
 target_link_libraries(material_system Vulkan::Vulkan SDL2::SDL2)
 target_compile_definitions(material_system PRIVATE GLM_FORCE_DEPTH_ZERO_TO_ONE)
