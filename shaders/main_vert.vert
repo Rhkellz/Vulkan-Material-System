@@ -2,10 +2,10 @@
 #extension GL_KHR_vulkan_glsl : enable
 #extension GL_EXT_buffer_reference : require
 
-layout (location = 0) out vec3 outColor;
-layout (location = 1) out vec2 outUV;
-layout (location = 2) out vec3 outNormal;
-layout (location = 3) out vec4 outTangent;
+layout (location = 0) out vec3 out_color;
+layout (location = 1) out vec2 out_uv;
+layout (location = 2) out vec3 out_normal;
+layout (location = 3) out vec4 out_tangent;
 
 layout(set = 1, binding = 0) uniform Scene_data {
 	mat4 model;
@@ -23,7 +23,7 @@ struct Vertex {
 	vec4 tangent;
 }; 
 
-layout(buffer_reference, std430) readonly buffer VertexBuffer{ 
+layout(buffer_reference, std430) readonly buffer Vertex_buffer{ 
 	Vertex vertices[];
 };
 
@@ -33,23 +33,23 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer{
 layout( push_constant ) uniform constants
 {	
 	mat4 render_matrix;
-	VertexBuffer vertexBuffer;
+	Vertex_buffer vertex_buffer;
 } PushConstants;
 
 void main() 
 {	
 	//load vertex data from device adress
-	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
+	Vertex v = PushConstants.vertex_buffer.vertices[gl_VertexIndex];
 
 	//output data
 	gl_Position = PushConstants.render_matrix * scene_data.model * vec4(v.position, 1.0f);// prebake in model?
 
-	outColor = v.color.xyz;
-	outUV.x = v.uv_x;
-	outUV.y = v.uv_y;
+	out_color = v.color.xyz;
+	out_uv.x = v.uv_x;
+	out_uv.y = v.uv_y;
 
-	outTangent.xyz = mat3(scene_data.model) * v.tangent.xyz;
-    outTangent.w = v.tangent.w;
+	out_tangent.xyz = mat3(scene_data.model) * v.tangent.xyz;
+    out_tangent.w = v.tangent.w;
 
-	outNormal = mat3(scene_data.model) * v.normal;// need to normalize if not just rotation matrix
+	out_normal = mat3(scene_data.model) * v.normal;// need to normalize if not just rotation matrix
 }

@@ -6,6 +6,7 @@ void VulkanMaterial::init_materials(const Context& context) {
 
 void VulkanMaterial::upload_material(std::filesystem::path filePath) {
     Material new_mat;
+    new_mat.name = filePath.filename().string();
 
     if (std::filesystem::is_directory(filePath)) {
         for (const auto& entry : std::filesystem::directory_iterator(filePath)) {

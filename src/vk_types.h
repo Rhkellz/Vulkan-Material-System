@@ -110,5 +110,6 @@ struct GPUSceneData {// dont need too many matrices for the static(ish) scene
 struct Material {
 	AllocatedImage albedo = {};
 	AllocatedImage normal_map = {};
+	std::string name;
 	//VkDescriptorSet material_descriptor;
 };

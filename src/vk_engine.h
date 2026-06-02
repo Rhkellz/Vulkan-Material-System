@@ -83,6 +83,8 @@ public:
 	float cam_move_test = 4.0f;
 	float rotation_angle = 0.0f;
 
+	int _selected_material_idx = 0;
+
 	std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();;
 	std::chrono::steady_clock::time_point curr_time;
 	int frame_time = 0;
@@ -103,8 +105,6 @@ public:
 
 	VkPipelineLayout _mesh_pipeline_layout;
 	VkPipeline _mesh_pipeline;
-
-	std::vector<std::shared_ptr<MeshAsset>> test_meshes;
 
 	std::vector<std::shared_ptr<MeshAsset>> sphere_mesh;
 

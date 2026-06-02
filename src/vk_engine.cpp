@@ -451,8 +451,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	if (!_vk_materials.materials_empty()) {
 		{
 			DescriptorWriter writer;
-			writer.write_image(0, _vk_materials._materials[0].albedo.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-			writer.write_image(1, _vk_materials._materials[0].normal_map.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(0, _vk_materials._materials[_selected_material_idx].albedo.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(1, _vk_materials._materials[_selected_material_idx].normal_map.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			
 			writer.update_set(_context.device, imageSet);
 		}
@@ -533,6 +533,19 @@ void VulkanEngine::run()
 			ImGui::SliderFloat("Rotate Sphere", &rotation_angle, -360.0f, 360.0f);
 			ImGui::Text("Frame Time: %d", frame_time);
 		}
+
+		if (ImGui::TreeNodeEx("Select Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+			for (size_t i = 0; i < _vk_materials._materials.size(); i++) {
+				ImGui::PushID(i);
+				if (ImGui::Selectable(_vk_materials._materials[i].name.c_str(), _selected_material_idx == i)) {
+					_selected_material_idx = i;
+				}
+
+				ImGui::PopID();
+			}
+			ImGui::TreePop();
+		}
+
 		ImGui::End();
 
 		ImGui::Render();
@@ -790,14 +803,9 @@ void VulkanEngine::init_mesh_pipeline() {
 void VulkanEngine::init_default_data() {
 	clear_color = { {0.1, 0.1, 0.1, 1.0} };
 
-	test_meshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
 	sphere_mesh = loadGltfMeshes(this, "assets/icosphere.glb").value();
 
 	_main_deletion_queue.push_function([&]() {
-		for (auto& mesh : test_meshes) {
-			vkutil::destroy_buffer(_context, mesh->meshBuffers.indexBuffer);
-			vkutil::destroy_buffer(_context, mesh->meshBuffers.vertexBuffer);
-		}
 
 		for (auto& mesh : sphere_mesh) {
 			vkutil::destroy_buffer(_context, mesh->meshBuffers.indexBuffer);
@@ -851,7 +859,8 @@ void VulkanEngine::init_default_data() {
 	default_data.light_col = glm::vec4(1.0, 1.0, 1.0, 1.0);
 	scene_data = default_data;
 
-	_vk_materials.upload_material("assets/bricks");
+	_vk_materials.upload_material("assets/brick");
+	_vk_materials.upload_material("assets/steel");
 
 
 	_main_deletion_queue.push_function([&]() {
