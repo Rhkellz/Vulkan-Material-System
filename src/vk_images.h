@@ -11,6 +11,6 @@ namespace vkutil {
 
 	AllocatedImage create_image(const Context& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 	AllocatedImage create_image(const Context& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
-	void destroy_image(const Context& context, const AllocatedImage& img);
+	void destroy_image(const Context& context, AllocatedImage& img);
 
 }

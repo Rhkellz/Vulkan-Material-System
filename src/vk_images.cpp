@@ -237,7 +237,7 @@ AllocatedImage vkutil::create_image(const Context& context, void* data, VkExtent
     return new_image;
 }
 
-void vkutil::destroy_image(const Context& context, const AllocatedImage& img)
+void vkutil::destroy_image(const Context& context, AllocatedImage& img)
 {
     vkDestroyImageView(context.device, img.imageView, nullptr);
     vmaDestroyImage(context.allocator, img.image, img.allocation);

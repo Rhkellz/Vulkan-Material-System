@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
 
 /*TODO: 
 * move camera
-* PBR shading + more textures
+* fix tangents + better loading prints
 * try to speed up startup time (maybe not...)
 * arrows to switch mat
 * antialiasing

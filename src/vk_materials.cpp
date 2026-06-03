@@ -38,22 +38,31 @@ void VulkanMaterial::upload_material(std::filesystem::path filePath) {
 }
 
 void VulkanMaterial::destroy_materials() {
-    AllocatedImage empty{};
     for (auto& mat : _materials) {
-        if (memcmp(&mat.albedo, &empty, sizeof(AllocatedImage)) != 0) {
+        if (mat.albedo.allocation != VK_NULL_HANDLE) {
             vkutil::destroy_image(_context, mat.albedo);
+            mat.albedo.allocation = VK_NULL_HANDLE;
         }
 
-        if (memcmp(&mat.normal_map, &empty, sizeof(AllocatedImage)) != 0) {
+        if (mat.normal_map.allocation != VK_NULL_HANDLE) {
             vkutil::destroy_image(_context, mat.normal_map);
+            mat.normal_map.allocation = VK_NULL_HANDLE;
         }
 
-        if (memcmp(&mat.roughness, &empty, sizeof(AllocatedImage)) != 0) {
+        if (mat.roughness.allocation != VK_NULL_HANDLE) {
             vkutil::destroy_image(_context, mat.roughness);
+            mat.roughness.allocation = VK_NULL_HANDLE;
         }
+
+        if (mat.metalness.allocation != VK_NULL_HANDLE) {
+            vkutil::destroy_image(_context, mat.metalness);
+            mat.metalness.allocation = VK_NULL_HANDLE;
+        }
+
+
+        // not sure where _black_image gets destroyed, but it does...
     }
 
-    vkutil::destroy_image(_context, _black_image);
 }
 
 bool VulkanMaterial::materials_empty() {

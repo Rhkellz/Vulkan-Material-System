@@ -131,9 +131,6 @@ void VulkanEngine::init_vulkan()
 	allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 	vmaCreateAllocator(&allocatorInfo, &_context.allocator);
 
-	_main_deletion_queue.push_function([&]() {
-		vmaDestroyAllocator(_context.allocator);
-		});
 }
 
 void VulkanEngine::init_images()
@@ -267,7 +264,11 @@ void VulkanEngine::cleanup()
 
 		_main_deletion_queue.flush();
 
+		_vk_materials.destroy_materials();
+
 		_vk_swapchain.destroy_swapchain();
+
+		vmaDestroyAllocator(_context.allocator);
 
 		vkDestroySurfaceKHR(_context.instance, _context.surface, nullptr);
 		vkDestroyDevice(_context.device, nullptr);
@@ -871,8 +872,4 @@ void VulkanEngine::init_default_data() {
 	_vk_materials.upload_material("assets/brick");
 	_vk_materials.upload_material("assets/steel");
 
-
-	_main_deletion_queue.push_function([&]() {
-		_vk_materials.destroy_materials();
-		});
 }
