@@ -24,8 +24,6 @@ void VulkanEngine::init()
 
 	_vk_swapchain.init_swapchain(_context);
 
-	_vk_materials.init_materials(_context);
-
 	init_images();
 
 	init_commands();
@@ -42,6 +40,7 @@ void VulkanEngine::init()
 
 	//everything went fine
 	_is_initialized = true;
+
 }
 
 void VulkanEngine::init_vulkan()
@@ -407,6 +406,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData();
 	scene_data.model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+	scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
 	*sceneUniformData = scene_data;
 
 	//create a descriptor set that binds that buffer and update it
@@ -450,9 +450,11 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	VkDescriptorSet imageSet = get_current_frame()._frame_descriptors.allocate(_context.device, _material_descriptor_layout);
 	if (!_vk_materials.materials_empty()) {
 		{
-			DescriptorWriter writer;
+			DescriptorWriter writer;//TODO: temp
 			writer.write_image(0, _vk_materials._materials[_selected_material_idx].albedo.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			writer.write_image(1, _vk_materials._materials[_selected_material_idx].normal_map.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(2, _vk_materials._materials[_selected_material_idx].roughness.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(3, _vk_materials._materials[_selected_material_idx].metalness.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			
 			writer.update_set(_context.device, imageSet);
 		}
@@ -530,10 +532,10 @@ void VulkanEngine::run()
 		if (ImGui::Begin("background")) {
 			ImGui::SliderFloat("Render Scale", &render_scale, 0.3f, 1.f);
 			ImGui::SliderFloat("Move Cam", &cam_move_test, 0.0f, 10.0f);
-			ImGui::SliderFloat("Rotate Sphere", &rotation_angle, -360.0f, 360.0f);
+			ImGui::SliderFloat("Rotate Sphere", &rotation_angle, -720.0f, 720.0f);
 			ImGui::Text("Frame Time: %d", frame_time);
 		}
-
+		  
 		if (ImGui::TreeNodeEx("Select Material", ImGuiTreeNodeFlags_DefaultOpen)) {
 			for (size_t i = 0; i < _vk_materials._materials.size(); i++) {
 				ImGui::PushID(i);
@@ -615,8 +617,9 @@ void VulkanEngine::init_descriptors()
 
 	{
 		DescriptorLayoutBuilder builder;
-		builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		for (uint32_t i = 0; i < _vk_materials.num_tex; i++) {
+			builder.add_binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		} //TODO: temp maybe
 		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 
@@ -812,7 +815,6 @@ void VulkanEngine::init_default_data() {
 			vkutil::destroy_buffer(_context, mesh->meshBuffers.vertexBuffer);
 		}
 		});
-
 	auto pack = [](glm::vec4 v) -> uint32_t {
 		uint8_t r = (uint8_t)(v.x * 255.0f);
 		uint8_t g = (uint8_t)(v.y * 255.0f);
@@ -832,6 +834,13 @@ void VulkanEngine::init_default_data() {
 	}
 	_error_checkerboard_image = vkutil::create_image(_context, (void*)pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT, false);
+
+	std::array<uint32_t, 1> black_pix;//TODO: temp
+	black_pix[0] = 0;
+	AllocatedImage black_image = vkutil::create_image(_context, (void*)black_pix.data(), VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT, false);
+
+	_vk_materials.init_materials(_context, black_image);
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	sampl.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
@@ -855,7 +864,7 @@ void VulkanEngine::init_default_data() {
 		});
 
 	GPUSceneData default_data;
-	default_data.light_dir = glm::vec4(1.0, 1.0, 1.0, 1.0);
+	default_data.light_dir = glm::vec4(-1.0, -1.0, -1.0, 1.0);// TODO: fix with space thingy
 	default_data.light_col = glm::vec4(1.0, 1.0, 1.0, 1.0);
 	scene_data = default_data;
 

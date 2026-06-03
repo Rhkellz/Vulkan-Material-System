@@ -88,13 +88,6 @@ add_custom_target(Shaders ALL
 add_custom_command(
     TARGET Shaders POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    "${CMAKE_SOURCE_DIR}/shaders"
-    "${OUTPUT_DIR}/shaders"
-)
-
-add_custom_command(
-    TARGET Shaders POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${CMAKE_SOURCE_DIR}/assets"
     "${OUTPUT_DIR}/assets"
 )

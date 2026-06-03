@@ -81,7 +81,7 @@ public:
 
 	float render_scale = 1.f;
 	float cam_move_test = 4.0f;
-	float rotation_angle = 0.0f;
+	float rotation_angle = 180.0f;
 
 	int _selected_material_idx = 0;
 

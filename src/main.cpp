@@ -13,3 +13,12 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+
+/*TODO: 
+* move camera
+* PBR shading + more textures
+* try to speed up startup time (maybe not...)
+* arrows to switch mat
+* antialiasing
+* gamma correction
+*/

@@ -7,7 +7,7 @@
 
 class VulkanMaterial {
 public:
-	void init_materials(const Context& context);
+	void init_materials(const Context& context, const AllocatedImage& black_image);
 
 	void upload_material(std::filesystem::path filePath);
 
@@ -15,6 +15,10 @@ public:
 	std::vector<Material> _materials;
 
 	bool materials_empty();
+
+	uint32_t num_tex = 4;
+
 private:
 	Context _context;
+	AllocatedImage _black_image;
 };

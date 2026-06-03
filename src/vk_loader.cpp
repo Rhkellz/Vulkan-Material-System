@@ -291,37 +291,64 @@ AllocatedImage uploadTexture(const Context& context,std::filesystem::path filena
 }
 
 void calculate_tangents(std::vector<uint32_t>& indices, std::vector<Vertex>& vertices) {
+    uint32_t idx1;
+    uint32_t idx2;
+    uint32_t idx3;
+
+    glm::vec3 p1;
+    glm::vec3 p2;
+    glm::vec3 p3;
+
+    glm::vec2 uv1;
+    glm::vec2 uv2;
+    glm::vec2 uv3;
+
+    glm::vec3 d_p1;
+    glm::vec3 d_p2;
+
+    glm::vec2 d_uv1;
+    glm::vec2 d_uv2;
+
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+
+    float coeff;
+
+    float h1;
+    float h2;
+    float h3;
+
     for (int i = 0; i < indices.size(); i += 3) {
-        uint32_t idx1 = indices[i];
-        uint32_t idx2 = indices[i + 1];
-        uint32_t idx3 = indices[i + 2];
+        idx1 = indices[i];
+        idx2 = indices[i + 1];
+        idx3 = indices[i + 2];
 
-        glm::vec3 p1 = vertices[idx1].position;
-        glm::vec3 p2 = vertices[idx2].position;
-        glm::vec3 p3 = vertices[idx3].position;
+        p1 = vertices[idx1].position;
+        p2 = vertices[idx2].position;
+        p3 = vertices[idx3].position;
 
-        glm::vec2 uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
-        glm::vec2 uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
-        glm::vec2 uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
+        uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
+        uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
+        uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
 
-        glm::vec3 d_p1 = p2 - p1;
-        glm::vec3 d_p2 = p3 - p1;
+        d_p1 = p2 - p1;
+        d_p2 = p3 - p1;
 
-        glm::vec2 d_uv1 = uv2 - uv1;
-        glm::vec2 d_uv2 = uv3 - uv1;
+        d_uv1 = uv2 - uv1;
+        d_uv2 = uv3 - uv1;
 
-        float coeff = 1 / (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
+        coeff = 1 / (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
 
-        glm::vec3 tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
-        glm::vec3 bitangent = coeff * (-d_uv2.x * d_p1 + d_uv1.x * d_p2);
+        tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
+        bitangent = coeff * (-d_uv2.x * d_p1 + d_uv1.x * d_p2);
 
-        float h1 = (glm::dot(glm::cross(vertices[idx1].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        h1 = (glm::dot(glm::cross(vertices[idx1].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
         vertices[idx1].tangent += glm::vec4(tangent, h1);
 
-        float h2 = (glm::dot(glm::cross(vertices[idx2].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        h2 = (glm::dot(glm::cross(vertices[idx2].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
         vertices[idx2].tangent += glm::vec4(tangent, h2);
 
-        float h3 = (glm::dot(glm::cross(vertices[idx3].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+        h3 = (glm::dot(glm::cross(vertices[idx3].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
         vertices[idx3].tangent += glm::vec4(tangent, h3);
     }
 

@@ -105,11 +105,14 @@ struct GPUSceneData {// dont need too many matrices for the static(ish) scene
 	glm::mat4 model;
 	glm::vec4 light_dir; // w for sun power
 	glm::vec4 light_col;
+	glm::vec4 camera_pos;
 };
 
 struct Material {
 	AllocatedImage albedo = {};
 	AllocatedImage normal_map = {};
+	AllocatedImage roughness = {};
+	AllocatedImage metalness = {};
 	std::string name;
 	//VkDescriptorSet material_descriptor;
 };
