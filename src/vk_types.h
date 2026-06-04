@@ -98,11 +98,12 @@ struct GPUMeshBuffers {
 // push constants for our mesh object draws
 struct GPUDrawPushConstants {
 	glm::mat4 worldMatrix;
+	glm::mat4 model;
+	uint32_t flags;
 	VkDeviceAddress vertexBuffer;
 };
 
-struct GPUSceneData {// dont need too many matrices for the static(ish) scene
-	glm::mat4 model;
+struct GPUSceneData {
 	glm::vec4 light_dir; // w for sun power
 	glm::vec4 light_col;
 	glm::vec4 camera_pos;

@@ -1,8 +1,10 @@
 //glsl version 4.5
 #version 450
 #extension GL_KHR_vulkan_glsl : enable
+#extension GL_EXT_buffer_reference : require
+#extension GL_GOOGLE_include_directive : require
 
-#define pi 3.14159
+#include "input_structures.glsl"
 
 //shader input
 layout (location = 0) in vec3 in_col;
@@ -13,17 +15,6 @@ layout (location = 4) in vec4 in_world_pos;
 //output write
 layout (location = 0) out vec4 out_frag_color;
 
-layout(set = 0, binding = 0) uniform sampler2D albedo_tex;
-layout(set = 0, binding = 1) uniform sampler2D normal_map_tex;
-layout(set = 0, binding = 2) uniform sampler2D roughness_tex;
-layout(set = 0, binding = 3) uniform sampler2D metalness_tex;
-
-layout(set = 1, binding = 0) uniform Scene_data {
-    mat4 model;
-    vec4 light_dir; // w for sun power
-    vec4 light_col;
-    vec4 cam_pos;
-} scene_data;
 
 vec3 calc_mapped_normal(vec3 normal, vec3 tangent, float handedness) {
     vec3 N = normalize(normal);
@@ -85,19 +76,37 @@ vec3 BRDF(vec3 n, vec3 L, vec3 V, vec3 H, vec3 albedo, float roughness, vec3 F_0
 }
 
 void main() {
-    vec4 tex_sample = texture(albedo_tex, in_uv);
+    
+    vec4 tex_sample = vec4(1.0);
+
+    if ((PushConstants.flags & 0x1) != 0) {
+        tex_sample = texture(albedo_tex, in_uv);
+    }
+
+    vec3 normal = in_normal;
+    if ((PushConstants.flags & 0x2) != 0) {
+        normal = calc_mapped_normal(in_normal, in_tangent.xyz, in_tangent.w);
+    }
+
+    float roughness = 1.0;
+    if ((PushConstants.flags & 0x4) != 0) {
+        roughness = texture(roughness_tex, in_uv).x;
+    }
+
     vec3 albedo = tex_sample.xyz;
     float alpha = tex_sample.a;
     
-    float roughness = texture(roughness_tex, in_uv).x;
-    vec3 normal = calc_mapped_normal(in_normal, in_tangent.xyz, in_tangent.w);
+
 
     vec3 V = normalize(scene_data.cam_pos.xyz - in_world_pos.xyz);
     vec3 L = normalize(-scene_data.light_dir.xyz); 
     vec3 H = normalize(L + V);
 
-    float metallic = texture(metalness_tex, in_uv).x;
-
+    float metallic = 0.0;
+    
+    if ((PushConstants.flags & 0x8) != 0) {
+        metallic = texture(metalness_tex, in_uv).x;
+    }
     vec3 dielectric_F_0 = vec3(0.04, 0.04, 0.04);
 
     vec3 active_albedo = albedo * (1.0 - metallic);

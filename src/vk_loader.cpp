@@ -317,43 +317,73 @@ void calculate_tangents(std::vector<uint32_t>& indices, std::vector<Vertex>& ver
     float h1;
     float h2;
     float h3;
-
-    for (int i = 0; i < indices.size(); i += 3) {
-        idx1 = indices[i];
-        idx2 = indices[i + 1];
-        idx3 = indices[i + 2];
-
-        p1 = vertices[idx1].position;
-        p2 = vertices[idx2].position;
-        p3 = vertices[idx3].position;
-
-        uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
-        uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
-        uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
-
-        d_p1 = p2 - p1;
-        d_p2 = p3 - p1;
-
-        d_uv1 = uv2 - uv1;
-        d_uv2 = uv3 - uv1;
-
-        coeff = 1 / (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
-
-        tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
-        bitangent = coeff * (-d_uv2.x * d_p1 + d_uv1.x * d_p2);
-
-        h1 = (glm::dot(glm::cross(vertices[idx1].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
-        vertices[idx1].tangent += glm::vec4(tangent, h1);
-
-        h2 = (glm::dot(glm::cross(vertices[idx2].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
-        vertices[idx2].tangent += glm::vec4(tangent, h2);
-
-        h3 = (glm::dot(glm::cross(vertices[idx3].normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
-        vertices[idx3].tangent += glm::vec4(tangent, h3);
-    }
-
+    // STEP 1: You MUST zero-initialize the arrays first!
     for (auto& v : vertices) {
-        v.tangent = glm::normalize(v.tangent);
+        v.tangent = glm::vec4(0.0f);
     }
+
+    // STEP 2: The Face Loop (Your math, cleaned up)
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        uint32_t idx1 = indices[i];
+        uint32_t idx2 = indices[i + 1];
+        uint32_t idx3 = indices[i + 2];
+
+        glm::vec3 p1 = vertices[idx1].position;
+        glm::vec3 p2 = vertices[idx2].position;
+        glm::vec3 p3 = vertices[idx3].position;
+
+        glm::vec2 uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
+        glm::vec2 uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
+        glm::vec2 uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
+
+        glm::vec3 d_p1 = p2 - p1;
+        glm::vec3 d_p2 = p3 - p1;
+
+        glm::vec2 d_uv1 = uv2 - uv1;
+        glm::vec2 d_uv2 = uv3 - uv1;
+
+        float det = (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
+        // Protect against division by zero on degenerate UV mappings
+        float coeff = (std::abs(det) > 1e-6f) ? (1.0f / det) : 0.0f;
+
+        glm::vec3 tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
+
+        // ONLY accumulate the 3D directional vector components here
+        vertices[idx1].tangent += glm::vec4(tangent, 0.0f);
+        vertices[idx2].tangent += glm::vec4(tangent, 0.0f);
+        vertices[idx3].tangent += glm::vec4(tangent, 0.0f);
+    }
+
+    // STEP 3: The Final Normalization & Handedness Pass
+    for (auto& v : vertices) {
+        glm::vec3 t = glm::vec3(v.tangent);
+        glm::vec3 n = v.normal; // assuming your naming layout
+
+        // Protect against zero-length vectors before normalizing
+        if (glm::length2(t) > 1e-6f) {
+            // Gram-Schmidt orthogonalization
+            glm::vec3 ortho_t = glm::normalize(t - n * glm::dot(n, t));
+
+            // Re-calculate local bitangent to evaluate true handedness sign cleanly
+            // We use a safe arbitrary reference direction if bitangent breaks down
+            glm::vec3 bitangent = glm::cross(n, ortho_t);
+
+            // Use standard right-handed vs left-handed validation
+            float w = (glm::dot(glm::cross(n, ortho_t), bitangent) < 0.0f) ? -1.0f : 1.0f;
+
+            v.tangent = glm::vec4(ortho_t, w);
+        }
+        else {
+            // Fallback for vertices with degenerate mappings
+            v.tangent = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+    }
+
+    /*for (auto& v : vertices) {
+        fmt::print("tangent x: {}\n", v.tangent.x);
+        fmt::print("tangent y: {}\n", v.tangent.y);
+        fmt::print("tangent z: {}\n", v.tangent.z);
+        fmt::print("tangent w: {}\n", v.tangent.w);
+    }*/
 
 }

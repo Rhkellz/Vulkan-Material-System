@@ -406,7 +406,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	//write the buffer
 
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData();
-	scene_data.model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
 	scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
 	*sceneUniformData = scene_data;
 
@@ -476,6 +475,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	// camera projection
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
 
+	glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis
 	projection[1][1] *= -1;
@@ -483,10 +484,12 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	GPUDrawPushConstants push_constants;
 	push_constants.worldMatrix = projection * view;
 	push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
+	push_constants.model = model;
+	push_constants.flags = shader_flags;
 
 	if (!sphere_mesh.empty() && !sphere_mesh[0]->surfaces.empty()) {
 		push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
-		vkCmdPushConstants(cmd, _mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+		vkCmdPushConstants(cmd, _mesh_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 		vkCmdBindIndexBuffer(cmd, sphere_mesh[0]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(cmd, sphere_mesh[0]->surfaces[0].count, 1, sphere_mesh[0]->surfaces[0].startIndex, 0, 0);
 	}
@@ -535,6 +538,19 @@ void VulkanEngine::run()
 			ImGui::SliderFloat("Move Cam", &cam_move_test, 0.0f, 10.0f);
 			ImGui::SliderFloat("Rotate Sphere", &rotation_angle, -720.0f, 720.0f);
 			ImGui::Text("Frame Time: %d", frame_time);
+
+			ImGui::Checkbox("Albedo", &shader_flags_bools[0]);
+			ImGui::Checkbox("Normals", &shader_flags_bools[1]);
+			ImGui::Checkbox("Roughness", &shader_flags_bools[2]);
+			ImGui::Checkbox("Metalness", &shader_flags_bools[3]);
+
+			shader_flags |= shader_flags_bools[3];
+			shader_flags <<= 1;
+			shader_flags |= shader_flags_bools[2];
+			shader_flags <<= 1;
+			shader_flags |= shader_flags_bools[1];
+			shader_flags <<= 1;
+			shader_flags |= shader_flags_bools[0];
 		}
 		  
 		if (ImGui::TreeNodeEx("Select Material", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -756,7 +772,7 @@ void VulkanEngine::init_mesh_pipeline() {
 	VkPushConstantRange bufferRange{};
 	bufferRange.offset = 0;
 	bufferRange.size = sizeof(GPUDrawPushConstants);
-	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
 	VkDescriptorSetLayout layouts[] = { _material_descriptor_layout, _gpu_scene_data_descriptor_layout };
@@ -865,11 +881,24 @@ void VulkanEngine::init_default_data() {
 		});
 
 	GPUSceneData default_data;
-	default_data.light_dir = glm::vec4(-1.0, -1.0, -1.0, 1.0);// TODO: fix with space thingy
+	default_data.light_dir = glm::vec4(-1.0, -1.0, -1.0, 1.0);
 	default_data.light_col = glm::vec4(1.0, 1.0, 1.0, 1.0);
 	scene_data = default_data;
 
 	_vk_materials.upload_material("assets/brick");
 	_vk_materials.upload_material("assets/steel");
 
+	shader_flags_bools[0] = true; // on albedo
+	shader_flags_bools[1] = true; // on normal maps
+	shader_flags_bools[2] = true; // on roughness
+	shader_flags_bools[3] = true; // on metalness
+
+	uint32_t shader_flags = 0;
+	shader_flags |= shader_flags_bools[3];
+	shader_flags <<= 1;
+	shader_flags |= shader_flags_bools[2];
+	shader_flags <<= 1;
+	shader_flags |= shader_flags_bools[1];
+	shader_flags <<= 1;
+	shader_flags |= shader_flags_bools[0];
 }
