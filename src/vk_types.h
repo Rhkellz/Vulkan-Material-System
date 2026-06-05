@@ -101,6 +101,7 @@ struct GPUDrawPushConstants {
 	glm::mat4 model;
 	uint32_t flags;
 	VkDeviceAddress vertexBuffer;
+	float displacement_amount;
 };
 
 struct GPUSceneData {
@@ -114,6 +115,8 @@ struct Material {
 	AllocatedImage normal_map = {};
 	AllocatedImage roughness = {};
 	AllocatedImage metalness = {};
+	AllocatedImage displacement = {};
+	AllocatedImage AO = {};
 	std::string name;
 	//VkDescriptorSet material_descriptor;
 };

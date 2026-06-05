@@ -16,7 +16,7 @@ public:
 
 	bool materials_empty();
 
-	uint32_t num_tex = 4;
+	const uint32_t num_tex = 6;
 
 private:
 	Context _context;

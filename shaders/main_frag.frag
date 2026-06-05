@@ -12,39 +12,32 @@ layout (location = 1) in vec2 in_uv;
 layout (location = 2) in vec3 in_normal;
 layout (location = 3) in vec4 in_tangent;
 layout (location = 4) in vec4 in_world_pos;
+
 //output write
 layout (location = 0) out vec4 out_frag_color;
 
-
-vec3 calc_mapped_normal(vec3 normal, vec3 tangent, float handedness) {
-    vec3 N = normalize(normal);
-    vec3 T = normalize(tangent - dot(tangent, N) * N);
-    
-    vec3 B = cross(N, T) * handedness; 
-
-    vec3 bumpMapNormal = texture(normal_map_tex, in_uv).xyz;
+vec3 calc_mapped_normal(mat3 TBN, vec2 uv) {
+    vec3 bumpMapNormal = texture(normal_map_tex, uv).xyz;
     bumpMapNormal = bumpMapNormal * 2.0 - 1.0;
 
-    mat3 TBN = mat3(T, B, N);
     vec3 worldSpaceNormal = TBN * bumpMapNormal;
 
     return normalize(worldSpaceNormal);
 }
 
 float GGX_distribution(float n_dot_h, float roughness) {
-    float r_square = roughness*roughness;
+    float r_square = roughness * roughness;
 
     if (n_dot_h <= 0.0) {
        return 0.0; 
     }
 
-    float piece = (n_dot_h*n_dot_h * (r_square - 1.0) + 1.0);
+    float piece = (n_dot_h * n_dot_h * (r_square - 1.0) + 1.0);
 
-    return r_square / (pi * (piece*piece));
+    return r_square / (pi * (piece * piece));
 }
 
 vec3 schlick_fresnel(vec3 V, vec3 H, vec3 F_0) {
-
     return F_0 + (vec3(1.0) - F_0) * pow(1.0 - max(0.0, dot(V, H)), 5.0);
 }
 
@@ -76,45 +69,60 @@ vec3 BRDF(vec3 n, vec3 L, vec3 V, vec3 H, vec3 albedo, float roughness, vec3 F_0
 }
 
 void main() {
-    
+    vec3 normal = normalize(in_normal);
+
+    /*out_frag_color = vec4(in_normal.xyz, 1.0);
+    return;*/
+
+    vec3 T = normalize(in_tangent.xyz - dot(in_tangent.xyz, normal) * normal);
+    vec3 B = cross(normal, T) * in_tangent.w; 
+
+    mat3 TBN = mat3(T, B, normal);
+    mat3 world_to_tan = transpose(TBN); 
+
+    vec3 V = normalize(scene_data.cam_pos.xyz - in_world_pos.xyz);
+    vec3 tangent_V = world_to_tan * V; 
+
     vec4 tex_sample = vec4(1.0);
+    vec2 uv = in_uv;
+
 
     if ((PushConstants.flags & 0x1) != 0) {
-        tex_sample = texture(albedo_tex, in_uv);
+        tex_sample = texture(albedo_tex, uv);
     }
 
-    vec3 normal = in_normal;
     if ((PushConstants.flags & 0x2) != 0) {
-        normal = calc_mapped_normal(in_normal, in_tangent.xyz, in_tangent.w);
+        normal = calc_mapped_normal(TBN, uv);
     }
 
     float roughness = 1.0;
     if ((PushConstants.flags & 0x4) != 0) {
-        roughness = texture(roughness_tex, in_uv).x;
+        roughness = texture(roughness_tex, uv).x;
     }
 
     vec3 albedo = tex_sample.xyz;
     float alpha = tex_sample.a;
-    
 
-
-    vec3 V = normalize(scene_data.cam_pos.xyz - in_world_pos.xyz);
     vec3 L = normalize(-scene_data.light_dir.xyz); 
     vec3 H = normalize(L + V);
 
     float metallic = 0.0;
-    
     if ((PushConstants.flags & 0x8) != 0) {
-        metallic = texture(metalness_tex, in_uv).x;
+        metallic = texture(metalness_tex, uv).x;
     }
+    
     vec3 dielectric_F_0 = vec3(0.04, 0.04, 0.04);
-
     vec3 active_albedo = albedo * (1.0 - metallic);
-
     vec3 F_0 = mix(dielectric_F_0, albedo, metallic);
 
-    // remember to include light col
-    vec3 col = pi * BRDF(normal, L, V, H, active_albedo, roughness, F_0) * max(0.0, dot(normal, L));
+    float ao = 0.0;
+
+    if ((PushConstants.flags & 0x20) != 0) {
+        ao = texture(AO_tex, uv).x;
+    }
+    vec3 ambient_col = vec3(0.02, 0.02, 0.02);
+
+    vec3 col = pi * BRDF(normal, L, V, H, active_albedo, roughness, F_0) * max(0.0, dot(normal, L)) + ao * ambient_col * active_albedo;
 
     out_frag_color = vec4(col, alpha);
 }

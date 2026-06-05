@@ -318,11 +318,7 @@ void VulkanEngine::draw()
 
 	// transition our main draw image into general layout so we can write into it
 	// we will overwrite it all so we dont care about what was the older layout
-	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
-	draw_background(cmd);
-
-	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vkutil::transition_image(cmd, _depth_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	draw_geometry(cmd);
@@ -393,7 +389,7 @@ void VulkanEngine::draw()
 
 }
 
-void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd) // TODO: Dont do per frame descriptor allocation for the textures
 {
 	//allocate a new uniform buffer for the scene data
 	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_context, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -455,14 +451,18 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 			writer.write_image(1, _vk_materials._materials[_selected_material_idx].normal_map.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			writer.write_image(2, _vk_materials._materials[_selected_material_idx].roughness.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 			writer.write_image(3, _vk_materials._materials[_selected_material_idx].metalness.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-			
+			writer.write_image(4, _vk_materials._materials[_selected_material_idx].displacement.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			writer.write_image(5, _vk_materials._materials[_selected_material_idx].AO.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
 			writer.update_set(_context.device, imageSet);
 		}
 	}
 	else {
 		{
 			DescriptorWriter writer;
-			writer.write_image(0, _error_checkerboard_image.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			for (uint32_t i = 0; i < _vk_materials.num_tex; i++) {
+				writer.write_image(0, _error_checkerboard_image.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			}
 
 			writer.update_set(_context.device, imageSet);
 		}
@@ -486,6 +486,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
 	push_constants.model = model;
 	push_constants.flags = shader_flags;
+	push_constants.displacement_amount = displacement_amount;
 
 	if (!sphere_mesh.empty() && !sphere_mesh[0]->surfaces.empty()) {
 		push_constants.vertexBuffer = sphere_mesh[0]->meshBuffers.vertexBufferAddress;
@@ -543,7 +544,18 @@ void VulkanEngine::run()
 			ImGui::Checkbox("Normals", &shader_flags_bools[1]);
 			ImGui::Checkbox("Roughness", &shader_flags_bools[2]);
 			ImGui::Checkbox("Metalness", &shader_flags_bools[3]);
+			ImGui::Checkbox("Heights", &shader_flags_bools[4]);
+			ImGui::Checkbox("AO", &shader_flags_bools[5]);
+			
+			ImGui::SliderFloat("Displacement", &displacement_amount, -0.5f, 0.5f);
 
+
+			shader_flags = 0;
+
+			shader_flags |= shader_flags_bools[5];// for loop
+			shader_flags <<= 1;
+			shader_flags |= shader_flags_bools[4];// for loop
+			shader_flags <<= 1;
 			shader_flags |= shader_flags_bools[3];
 			shader_flags <<= 1;
 			shader_flags |= shader_flags_bools[2];
@@ -637,7 +649,7 @@ void VulkanEngine::init_descriptors()
 		for (uint32_t i = 0; i < _vk_materials.num_tex; i++) {
 			builder.add_binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		} //TODO: temp maybe
-		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_FRAGMENT_BIT);
+		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);//TODO: optimize shader bit things
 	}
 
 	_main_deletion_queue.push_function([&]() {
@@ -863,7 +875,8 @@ void VulkanEngine::init_default_data() {
 	sampl.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	sampl.minLod = 0.0f;
 	sampl.maxLod = VK_LOD_CLAMP_NONE;
-
+	sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	sampl.magFilter = VK_FILTER_NEAREST;
 	sampl.minFilter = VK_FILTER_NEAREST;
 
@@ -887,13 +900,20 @@ void VulkanEngine::init_default_data() {
 
 	_vk_materials.upload_material("assets/brick");
 	_vk_materials.upload_material("assets/steel");
+	_vk_materials.upload_material("assets/rock");
 
 	shader_flags_bools[0] = true; // on albedo
 	shader_flags_bools[1] = true; // on normal maps
 	shader_flags_bools[2] = true; // on roughness
 	shader_flags_bools[3] = true; // on metalness
+	shader_flags_bools[4] = true; // on heightfield
+	shader_flags_bools[5] = true; // on AO
 
 	uint32_t shader_flags = 0;
+	shader_flags |= shader_flags_bools[5];
+	shader_flags <<= 1;
+	shader_flags |= shader_flags_bools[4];
+	shader_flags <<= 1;
 	shader_flags |= shader_flags_bools[3];
 	shader_flags <<= 1;
 	shader_flags |= shader_flags_bools[2];

@@ -26,9 +26,12 @@ layout( push_constant ) uniform constants
 	mat4 model_matrix;
 	uint flags;
 	Vertex_buffer vertex_buffer;
+	float displacement_amount;
 } PushConstants;
 
 layout(set = 0, binding = 0) uniform sampler2D albedo_tex;
 layout(set = 0, binding = 1) uniform sampler2D normal_map_tex;
 layout(set = 0, binding = 2) uniform sampler2D roughness_tex;
 layout(set = 0, binding = 3) uniform sampler2D metalness_tex;
+layout(set = 0, binding = 4) uniform sampler2D height_tex;
+layout(set = 0, binding = 5) uniform sampler2D AO_tex;

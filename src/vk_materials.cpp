@@ -22,6 +22,10 @@ void VulkanMaterial::upload_material(std::filesystem::path filePath) {
             } else if (curr_path_string == "metalness.png") {
                 has_metal = true;
                 new_mat.metalness = uploadTexture(_context, entry.path());
+            } else if (curr_path_string == "displacement.png") {
+                new_mat.displacement = uploadTexture(_context, entry.path());
+            } else if (curr_path_string == "AO.png") {
+                new_mat.AO = uploadTexture(_context, entry.path());
             }
         }
 
@@ -54,13 +58,27 @@ void VulkanMaterial::destroy_materials() {
             mat.roughness.allocation = VK_NULL_HANDLE;
         }
 
-        if (mat.metalness.allocation != VK_NULL_HANDLE) {
+        if (mat.metalness.image != VK_NULL_HANDLE && mat.metalness.image != _black_image.image) {
             vkutil::destroy_image(_context, mat.metalness);
             mat.metalness.allocation = VK_NULL_HANDLE;
         }
 
+        if (mat.displacement.allocation != VK_NULL_HANDLE) {
+            vkutil::destroy_image(_context, mat.displacement);
+            mat.displacement.allocation = VK_NULL_HANDLE;
+        }
 
-        // not sure where _black_image gets destroyed, but it does...
+        if (mat.AO.allocation != VK_NULL_HANDLE) {
+            vkutil::destroy_image(_context, mat.AO);
+            mat.AO.allocation = VK_NULL_HANDLE;
+        }
+
+    }
+
+    if (_black_image.image != VK_NULL_HANDLE) {
+        vkutil::destroy_image(_context, _black_image);
+        _black_image.image = VK_NULL_HANDLE;
+        _black_image.allocation = nullptr;
     }
 
 }

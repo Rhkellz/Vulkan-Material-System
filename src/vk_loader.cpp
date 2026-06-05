@@ -267,6 +267,7 @@ std::optional<std::vector<Material>> loadGltfTextures(const Context& context, st
 }
 
 AllocatedImage uploadTexture(const Context& context,std::filesystem::path filename) {
+    fmt::println("Loading texture {}", filename.string());
     int img_width = 0;
     int img_height = 0;
     int img_channels = 0;
@@ -324,29 +325,29 @@ void calculate_tangents(std::vector<uint32_t>& indices, std::vector<Vertex>& ver
 
     // STEP 2: The Face Loop (Your math, cleaned up)
     for (size_t i = 0; i < indices.size(); i += 3) {
-        uint32_t idx1 = indices[i];
-        uint32_t idx2 = indices[i + 1];
-        uint32_t idx3 = indices[i + 2];
+        idx1 = indices[i];
+        idx2 = indices[i + 1];
+        idx3 = indices[i + 2];
 
-        glm::vec3 p1 = vertices[idx1].position;
-        glm::vec3 p2 = vertices[idx2].position;
-        glm::vec3 p3 = vertices[idx3].position;
+        p1 = vertices[idx1].position;
+        p2 = vertices[idx2].position;
+        p3 = vertices[idx3].position;
 
-        glm::vec2 uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
-        glm::vec2 uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
-        glm::vec2 uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
+        uv1 = glm::vec2(vertices[idx1].uv_x, vertices[idx1].uv_y);
+        uv2 = glm::vec2(vertices[idx2].uv_x, vertices[idx2].uv_y);
+        uv3 = glm::vec2(vertices[idx3].uv_x, vertices[idx3].uv_y);
 
-        glm::vec3 d_p1 = p2 - p1;
-        glm::vec3 d_p2 = p3 - p1;
+        d_p1 = p2 - p1;
+        d_p2 = p3 - p1;
 
-        glm::vec2 d_uv1 = uv2 - uv1;
-        glm::vec2 d_uv2 = uv3 - uv1;
+        d_uv1 = uv2 - uv1;
+        d_uv2 = uv3 - uv1;
 
         float det = (d_uv1.x * d_uv2.y - d_uv1.y * d_uv2.x);
         // Protect against division by zero on degenerate UV mappings
         float coeff = (std::abs(det) > 1e-6f) ? (1.0f / det) : 0.0f;
 
-        glm::vec3 tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
+        tangent = coeff * (d_uv2.y * d_p1 - d_uv1.y * d_p2);
 
         // ONLY accumulate the 3D directional vector components here
         vertices[idx1].tangent += glm::vec4(tangent, 0.0f);
