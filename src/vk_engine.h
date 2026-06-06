@@ -33,7 +33,7 @@ struct ComputeEffect {
 };
 
 struct FrameData {
-	VkSemaphore _swapchain_semaphore, _render_semaphore;
+	VkSemaphore _swapchain_semaphore;
 	VkFence _render_fence;
 
 	VkCommandPool _command_pool;
@@ -41,6 +41,8 @@ struct FrameData {
 
 	DeletionQueue _deletion_queue;
 	DescriptorAllocatorGrowable _frame_descriptors;
+
+	AllocatedBuffer _GPU_scene_data_buffer;
 };
 
 
@@ -79,19 +81,6 @@ public:
 	AllocatedImage _depth_image;
 	VkExtent2D _draw_extent;
 
-	float render_scale = 1.f;
-	float cam_move_test = 4.0f;
-	float rotation_angle = 180.0f;
-	bool shader_flags_bools[6];//0 = albedo, 1 = normals, 2 = roughness, 3 = metalness, 4 = heightfield, 5 = AO
-	uint32_t shader_flags;
-	float displacement_amount = 0.02;
-
-	int _selected_material_idx = 0;
-
-	std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();;
-	std::chrono::steady_clock::time_point curr_time;
-	int frame_time = 0;
-
 	bool stop_rendering{ false };
 
 	DescriptorAllocator global_descriptor_allocator;
@@ -127,6 +116,18 @@ public:
 	VkDescriptorSetLayout _material_descriptor_layout;
 
 	VkClearColorValue clear_color;
+
+	float cam_move_test = 4.0f;
+	float rotation_angle = 180.0f;
+	bool shader_flags_bools[6];//0 = albedo, 1 = normals, 2 = roughness, 3 = metalness, 4 = heightfield, 5 = AO
+	uint32_t shader_flags;
+	float displacement_amount = 0.035;
+
+	int _selected_material_idx = 0;
+
+	std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();;
+	std::chrono::steady_clock::time_point curr_time;
+	int frame_time = 0;
 
 private:
 

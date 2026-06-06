@@ -54,3 +54,23 @@ void VulkanSwapchain::resize_swapchain(bool& resize_requested) {
 
 	resize_requested = false;
 }
+
+void VulkanSwapchain::init_present_semaphores(const VkSemaphoreCreateInfo& semaphore_create_info) {// must be called after swapchain init!
+	if (_swapchain_images.empty()) {
+		throw std::runtime_error("init_present_semaphores() called before init swapchain!");
+	}
+
+	_present_semaphores.assign(_swapchain_images.size(), VK_NULL_HANDLE);// init the vector with default data
+	
+	for (uint32_t i = 0; i < _swapchain_images.size(); i++) {
+		vkCreateSemaphore(_context.device, &semaphore_create_info, nullptr, &_present_semaphores[i]);
+	}
+}
+
+void VulkanSwapchain::destroy_present_semaphores() {
+	for (uint32_t i = 0; i < _present_semaphores.size(); i++) {
+		vkDestroySemaphore(_context.device, _present_semaphores[i], nullptr);
+	}
+
+	_present_semaphores.clear();
+}
