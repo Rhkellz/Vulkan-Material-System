@@ -98,6 +98,9 @@ public:
 	VkPipelineLayout _mesh_pipeline_layout;
 	VkPipeline _mesh_pipeline;
 
+	VkPipelineLayout _skybox_pipeline_layout;
+	VkPipeline _skybox_pipeline;
+
 	std::vector<std::shared_ptr<MeshAsset>> sphere_mesh;
 
 	bool resize_requested;
@@ -114,8 +117,11 @@ public:
 	VkSampler _defaultSamplerNearest;
 
 	VkDescriptorSetLayout _material_descriptor_layout;
+	VkDescriptorSetLayout _skybox_descriptor_layout;
 
 	VkClearColorValue clear_color;
+
+	AllocatedImage _skybox;
 
 	float cam_move_test = 4.0f;
 	float rotation_angle = 180.0f;
@@ -145,9 +151,17 @@ private:
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
+	void start_rendering(VkCommandBuffer cmd);
+
+	void end_rendering(VkCommandBuffer cmd);
+
 	void draw_geometry(VkCommandBuffer cmd);
 
+	void draw_skybox(VkCommandBuffer cmd);
+
 	void init_mesh_pipeline();
+
+	void init_skybox_pipeline();
 
 	void init_default_data();
 

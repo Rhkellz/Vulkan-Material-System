@@ -91,3 +91,4 @@ add_custom_command(
     "${CMAKE_SOURCE_DIR}/assets"
     "${OUTPUT_DIR}/assets"
 )
+

@@ -35,3 +35,5 @@ layout(set = 0, binding = 2) uniform sampler2D roughness_tex;
 layout(set = 0, binding = 3) uniform sampler2D metalness_tex;
 layout(set = 0, binding = 4) uniform sampler2D height_tex;
 layout(set = 0, binding = 5) uniform sampler2D AO_tex;
+
+layout(set = 2, binding = 0) uniform samplerCube skybox_tex;

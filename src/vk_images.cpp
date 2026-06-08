@@ -1,6 +1,7 @@
 #include <vk_initializers.h>
 #include "vk_images.h"
 #include "vk_buffers.h"
+#include "vk_mem_alloc.h"
 
 void vkutil::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
 {
@@ -241,4 +242,117 @@ void vkutil::destroy_image(const Context& context, AllocatedImage& img)
 {
     vkDestroyImageView(context.device, img.imageView, nullptr);
     vmaDestroyImage(context.allocator, img.image, img.allocation);
+}
+
+AllocatedImage vkutil::create_skybox(const Context& context, VkFormat format, VkImageUsageFlags flags, VkExtent3D extent) {
+    AllocatedImage skybox;
+    skybox.imageFormat = format;
+    skybox.imageExtent = extent;
+
+    VkImageCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.imageType = VK_IMAGE_TYPE_2D;
+    create_info.format = format;
+    create_info.extent = extent;
+    create_info.mipLevels = 1;
+    create_info.arrayLayers = 6;
+    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    create_info.usage = flags;
+    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    create_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+    VmaAllocationCreateInfo dma_alloc_info{};
+    dma_alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    dma_alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VK_CHECK(vmaCreateImage(context.allocator, &create_info, &dma_alloc_info,
+        &skybox.image, &skybox.allocation, nullptr));
+
+    VkImageViewCreateInfo image_view_create_info{};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.pNext = nullptr;
+    image_view_create_info.image = skybox.image;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_CUBE; // Tells shaders to use vec3 texture coordinates
+    image_view_create_info.format = format;
+
+    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 6;
+
+    VK_CHECK(vkCreateImageView(context.device, &image_view_create_info, nullptr, &skybox.imageView));
+
+    return skybox;
+}
+
+AllocatedImage vkutil::create_skybox(const Context& context, std::vector<void*> data, VkFormat format, VkImageUsageFlags flags, VkExtent3D extent) {
+    AllocatedImage skybox = vkutil::create_skybox(context, format, flags, extent);
+    VkBufferUsageFlags buffer_flags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT;
+    size_t face_size = 0;
+    if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+        face_size = 8 * extent.width * extent.height;
+    } else if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+        face_size = 4 * extent.width * extent.height;
+    } else {
+        throw std::runtime_error("unexpected skybox vk_format");
+    }
+    AllocatedBuffer staging_buffer = vkutil::create_buffer(context, face_size * 6, buffer_flags, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    VmaAllocationInfo alloc_info{};
+
+    vmaGetAllocationInfo(context.allocator, staging_buffer.allocation, &alloc_info);
+
+    void* staging_mapped_data = alloc_info.pMappedData;
+
+    for (int i = 0; i < 6; i++) {
+        void* dest_address = (void*)((uintptr_t)staging_mapped_data + (i * face_size));
+
+        std::memcpy(dest_address, data[i], face_size);
+    }
+
+    std::vector<VkBufferImageCopy> copy_regions;
+    copy_regions.reserve(6);
+    
+    for (uint32_t i = 0; i < 6; i++) {
+        VkBufferImageCopy region{};
+        region.bufferOffset = i * face_size;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = i;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent = extent;
+
+        copy_regions.push_back(region);
+    }
+
+    context.immediate_submit([&](VkCommandBuffer cmd) {
+        vkutil::transition_image(cmd, skybox.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        vkCmdCopyBufferToImage(
+            cmd,
+            staging_buffer.buffer,
+            skybox.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            static_cast<uint32_t>(copy_regions.size()),
+            copy_regions.data()
+        );
+
+        vkutil::transition_image(cmd, skybox.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        });
+
+    vkutil::destroy_buffer(context, staging_buffer);
+
+    return skybox;
 }

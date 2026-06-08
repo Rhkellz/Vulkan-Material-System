@@ -60,7 +60,7 @@ void VulkanSwapchain::init_present_semaphores(const VkSemaphoreCreateInfo& semap
 		throw std::runtime_error("init_present_semaphores() called before init swapchain!");
 	}
 
-	_present_semaphores.assign(_swapchain_images.size(), VK_NULL_HANDLE);// init the vector with default data
+	_present_semaphores.assign(_swapchain_images.size(), VK_NULL_HANDLE);// init the vector
 	
 	for (uint32_t i = 0; i < _swapchain_images.size(); i++) {
 		vkCreateSemaphore(_context.device, &semaphore_create_info, nullptr, &_present_semaphores[i]);

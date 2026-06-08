@@ -13,4 +13,7 @@ namespace vkutil {
 	AllocatedImage create_image(const Context& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 	void destroy_image(const Context& context, AllocatedImage& img);
 
+	AllocatedImage create_skybox(const Context& context, VkFormat format, VkImageUsageFlags flags, VkExtent3D extent);
+	AllocatedImage create_skybox(const Context& context, std::vector<void*> data, VkFormat format, VkImageUsageFlags flags, VkExtent3D extent);
+
 }

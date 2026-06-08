@@ -285,7 +285,11 @@ void VulkanEngine::draw() {
 	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vkutil::transition_image(cmd, _depth_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
+	start_rendering(cmd);
 	draw_geometry(cmd);
+	draw_skybox(cmd);
+	end_rendering(cmd);
+
 	draw_imgui(cmd, _draw_image.imageView);
 
 	// transition the draw image and the swapchain image into their correct transfer layouts
@@ -350,25 +354,8 @@ void VulkanEngine::draw() {
 	prev_time = curr_time;
 }
 
-void VulkanEngine::draw_geometry(VkCommandBuffer cmd) { // TODO: Dont do per frame descriptor allocation for the textures
-
-	// get the current uniform buffer
-	AllocatedBuffer uniform_buffer = get_current_frame()._GPU_scene_data_buffer;
-
-	// write into the buffer
-	GPUSceneData* scene_uniform_data = (GPUSceneData*)uniform_buffer.allocation->GetMappedData();
-	scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
-	*scene_uniform_data = scene_data;
-
-	// create a descriptor set that binds that buffer and update it
-	VkDescriptorSet global_descriptor = get_current_frame()._frame_descriptors.allocate(_context.device, _gpu_scene_data_descriptor_layout);
-
-	DescriptorWriter writer;
-	writer.write_buffer(0, uniform_buffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-	writer.update_set(_context.device, global_descriptor);
-
-	// begin a render pass connected to our draw image
-	VkClearValue clear_value; // also do clear color
+void VulkanEngine::start_rendering(VkCommandBuffer cmd) {
+	VkClearValue clear_value;
 	clear_value.color = clear_color;
 	VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(_draw_image.imageView, &clear_value, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	VkRenderingAttachmentInfo depth_attachment = vkinit::depth_attachment_info(_depth_image.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -394,6 +381,24 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) { // TODO: Dont do per fra
 	scissor.extent.height = viewport.height;
 
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
+	// get the current uniform buffer
+	AllocatedBuffer uniform_buffer = get_current_frame()._GPU_scene_data_buffer;
+
+	// write into the buffer
+	GPUSceneData* scene_uniform_data = (GPUSceneData*)uniform_buffer.allocation->GetMappedData();
+	scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
+	*scene_uniform_data = scene_data;
+
+	// create a descriptor set that binds that buffer and update it
+	VkDescriptorSet global_descriptor = get_current_frame()._frame_descriptors.allocate(_context.device, _gpu_scene_data_descriptor_layout);
+
+	DescriptorWriter writer;
+	writer.write_buffer(0, uniform_buffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.update_set(_context.device, global_descriptor);
+
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline);
 
@@ -413,8 +418,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) { // TODO: Dont do per fra
 		image_writer.update_set(_context.device, image_set);
 	}
 
+	VkDescriptorSet skybox_set = get_current_frame()._frame_descriptors.allocate(_context.device, _skybox_descriptor_layout);
+	{
+		DescriptorWriter writer;
+		writer.write_image(0, _skybox.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.update_set(_context.device, skybox_set);
+	}
+
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 0, 1, &image_set, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 1, 1, &global_descriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 2, 1, &skybox_set, 0, nullptr);
 
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0,-cam_move_test });
 
@@ -439,7 +452,36 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) { // TODO: Dont do per fra
 		vkCmdBindIndexBuffer(cmd, sphere_mesh[0]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(cmd, sphere_mesh[0]->surfaces[0].count, 1, sphere_mesh[0]->surfaces[0].startIndex, 0, 0);
 	}
+}
 
+void VulkanEngine::draw_skybox(VkCommandBuffer cmd) {
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skybox_pipeline);
+
+	VkDescriptorSet skybox_set = get_current_frame()._frame_descriptors.allocate(_context.device, _skybox_descriptor_layout);
+	{
+		DescriptorWriter writer;
+		writer.write_image(0, _skybox.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.update_set(_context.device, skybox_set);
+	}
+
+	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
+
+	glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+
+	projection[1][1] *= -1;
+
+	GPUSkyboxPushConstants push_constants;
+	push_constants.worldMatrix = projection;
+	push_constants.model = model;
+
+	vkCmdPushConstants(cmd, _skybox_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUSkyboxPushConstants), &push_constants);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skybox_pipeline_layout, 0, 1, &skybox_set, 0, nullptr);
+
+	vkCmdDraw(cmd, 36, 1, 0, 0);
+}
+
+void VulkanEngine::end_rendering(VkCommandBuffer cmd) {
 	vkCmdEndRendering(cmd);
 }
 
@@ -591,18 +633,30 @@ void VulkanEngine::init_descriptors()
 		DescriptorLayoutBuilder builder;
 		for (uint32_t i = 0; i < _vk_materials.num_tex; i++) {
 			builder.add_binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		} //TODO: temp maybe
-		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);//TODO: optimize shader bit things
+		}
+		_material_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 
 	_main_deletion_queue.push_function([&]() {
 		vkDestroyDescriptorSetLayout(_context.device, _material_descriptor_layout, nullptr);
+		});
+
+
+	{
+		DescriptorLayoutBuilder builder;
+		builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		_skybox_descriptor_layout = builder.build(_context.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	}
+
+	_main_deletion_queue.push_function([&]() {
+		vkDestroyDescriptorSetLayout(_context.device, _skybox_descriptor_layout, nullptr);
 		});
 }
 
 void VulkanEngine::init_pipelines()
 {
 	init_mesh_pipeline();
+	init_skybox_pipeline();
 }
 
 void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function)
@@ -711,7 +765,6 @@ void VulkanEngine::init_mesh_pipeline() {
 	std::string frag_path = "shaders/main_frag.frag.spv";
 	std::string vert_path = "shaders/main_vert.vert.spv";
 
-
 	VkShaderModule frag_shader;
 	VkShaderModule vert_shader;
 
@@ -729,12 +782,12 @@ void VulkanEngine::init_mesh_pipeline() {
 	buffer_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
 	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-	VkDescriptorSetLayout layouts[] = { _material_descriptor_layout, _gpu_scene_data_descriptor_layout };
+	VkDescriptorSetLayout layouts[] = { _material_descriptor_layout, _gpu_scene_data_descriptor_layout, _skybox_descriptor_layout };
 
 	pipeline_layout_info.pPushConstantRanges = &buffer_range;
 	pipeline_layout_info.pushConstantRangeCount = 1;
 	pipeline_layout_info.pSetLayouts = layouts;
-	pipeline_layout_info.setLayoutCount = 2;
+	pipeline_layout_info.setLayoutCount = 3;
 	VK_CHECK(vkCreatePipelineLayout(_context.device, &pipeline_layout_info, nullptr, &_mesh_pipeline_layout));
 
 	PipelineBuilder pipeline_builder;
@@ -754,7 +807,7 @@ void VulkanEngine::init_mesh_pipeline() {
 
 	pipeline_builder.disable_blending();
 
-	//pipelineBuilder.disable_depthtest();
+	//pipeline_builder.disable_depthtest();
 	pipeline_builder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	//connect the image format we will draw into, from draw image
@@ -771,6 +824,72 @@ void VulkanEngine::init_mesh_pipeline() {
 	_main_deletion_queue.push_function([&]() {
 		vkDestroyPipelineLayout(_context.device, _mesh_pipeline_layout, nullptr);
 		vkDestroyPipeline(_context.device, _mesh_pipeline, nullptr);
+		});
+}
+
+void VulkanEngine::init_skybox_pipeline() {
+	std::string frag_path = "shaders/skybox_frag.frag.spv";
+	std::string vert_path = "shaders/skybox_vert.vert.spv";
+
+	VkShaderModule frag_shader;
+	VkShaderModule vert_shader;
+
+	if (!vkutil::load_shader_module(frag_path.c_str(), _context.device, &frag_shader)) {
+		throw std::runtime_error("Failed to load fragment shader");
+	}
+
+	if (!vkutil::load_shader_module(vert_path.c_str(), _context.device, &vert_shader)) {
+		throw std::runtime_error("Failed to load vertex shader");
+	}
+
+	VkPushConstantRange buffer_range{};
+	buffer_range.offset = 0;
+	buffer_range.size = sizeof(GPUSkyboxPushConstants);
+	buffer_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+	VkDescriptorSetLayout layouts[] = { _skybox_descriptor_layout };
+
+	pipeline_layout_info.pPushConstantRanges = &buffer_range;
+	pipeline_layout_info.pushConstantRangeCount = 1;
+	pipeline_layout_info.pSetLayouts = layouts;
+	pipeline_layout_info.setLayoutCount = 1;
+	VK_CHECK(vkCreatePipelineLayout(_context.device, &pipeline_layout_info, nullptr, &_skybox_pipeline_layout));
+
+	PipelineBuilder pipeline_builder;
+
+	//use the triangle layout we created
+	pipeline_builder._pipelineLayout = _skybox_pipeline_layout;
+	//connecting the vertex and pixel shaders to the pipeline
+	pipeline_builder.set_shaders(vert_shader, frag_shader);
+	//it will draw triangles
+	pipeline_builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	//filled triangles
+	pipeline_builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	//no backface culling
+	pipeline_builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	//no multisampling
+	pipeline_builder.set_multisampling_none();
+
+	pipeline_builder.disable_blending();
+
+	//pipeline_builder.disable_depthtest();
+	pipeline_builder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+	//connect the image format we will draw into, from draw image
+	pipeline_builder.set_color_attachment_format(_draw_image.imageFormat);
+	pipeline_builder.set_depth_format(_depth_image.imageFormat);
+
+	//finally build the pipeline
+	_skybox_pipeline = pipeline_builder.build_pipeline(_context.device);
+
+	//clean structures
+	vkDestroyShaderModule(_context.device, frag_shader, nullptr);
+	vkDestroyShaderModule(_context.device, vert_shader, nullptr);
+
+	_main_deletion_queue.push_function([&]() {
+		vkDestroyPipelineLayout(_context.device, _skybox_pipeline_layout, nullptr);
+		vkDestroyPipeline(_context.device, _skybox_pipeline, nullptr);
 		});
 }
 
@@ -841,8 +960,8 @@ void VulkanEngine::init_default_data() {
 	scene_data = default_data;
 
 	_vk_materials.upload_material("assets/brick");
-	_vk_materials.upload_material("assets/steel");
-	_vk_materials.upload_material("assets/rock");
+	/*_vk_materials.upload_material("assets/steel");
+	_vk_materials.upload_material("assets/rock");*/
 
 	shader_flags_bools[0] = true; // on albedo
 	shader_flags_bools[1] = true; // on normal maps
@@ -863,4 +982,45 @@ void VulkanEngine::init_default_data() {
 	shader_flags |= shader_flags_bools[1];
 	shader_flags <<= 1;
 	shader_flags |= shader_flags_bools[0];
+
+	VkImageUsageFlags skybox_usage_flags{};
+	skybox_usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	skybox_usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	skybox_usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+
+	// load skybox
+
+	int img_width = 0;
+	int img_height = 0;
+	int img_channels = 0;
+
+	std::vector<void*> skybox_data;
+	stbi_uc* skybox_pixels;
+
+	skybox_pixels = stbi_load("assets/skybox/negx.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	skybox_pixels = stbi_load("assets/skybox/posx.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	skybox_pixels = stbi_load("assets/skybox/negy.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	skybox_pixels = stbi_load("assets/skybox/posy.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	skybox_pixels = stbi_load("assets/skybox/negz.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	skybox_pixels = stbi_load("assets/skybox/posz.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+
+	VkExtent3D skybox_extent = { img_width, img_height, 1 };
+
+	_skybox = vkutil::create_skybox(_context, skybox_data, VK_FORMAT_R8G8B8A8_UNORM, skybox_usage_flags, skybox_extent);
+
+	_main_deletion_queue.push_function([&]() {
+		vkutil::destroy_image(_context, _skybox);
+		});
 }

@@ -104,6 +104,11 @@ struct GPUDrawPushConstants {
 	float displacement_amount;
 };
 
+struct GPUSkyboxPushConstants {
+	glm::mat4 worldMatrix;
+	glm::mat4 model;
+};
+
 struct GPUSceneData {
 	glm::vec4 light_dir; // w for sun power
 	glm::vec4 light_col;
