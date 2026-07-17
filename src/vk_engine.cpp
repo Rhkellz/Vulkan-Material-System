@@ -136,23 +136,27 @@ void VulkanEngine::init_images() {
 	VkFormat draw_image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	VkExtent3D draw_image_extent = { _context.window_extent.width, _context.window_extent.height, 1 };
 
-	VkImageUsageFlags draw_image_flags{};
+	VkImageUsageFlags draw_image_flags{}; // revisit
 	draw_image_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	draw_image_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
 	draw_image_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-	_draw_image = vkutil::create_image(_context, draw_image_extent, draw_image_format, draw_image_flags, false);
+	_draw_image = vkutil::create_image(_context, draw_image_extent, draw_image_format, draw_image_flags, false, VK_SAMPLE_COUNT_4_BIT);
+	
+	// this image resolves the MSAA sampling, allowing us to blit the drawn image into the swapchain image
+	_resolve_image = vkutil::create_image(_context, draw_image_extent, draw_image_format, draw_image_flags, false, VK_SAMPLE_COUNT_1_BIT);
 
 
 	VkFormat depth_image_format = VK_FORMAT_D32_SFLOAT;
 	VkImageUsageFlags depth_image_flags = {};
 	depth_image_flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-	_depth_image = vkutil::create_image(_context, draw_image_extent, depth_image_format, depth_image_flags, false);
+	_depth_image = vkutil::create_image(_context, draw_image_extent, depth_image_format, depth_image_flags, false, VK_SAMPLE_COUNT_4_BIT);
 
 	// add to deletion queues
 	_main_deletion_queue.push_function([=]() {
 		vkutil::destroy_image(_context, _draw_image);
+		vkutil::destroy_image(_context, _resolve_image);
 		vkutil::destroy_image(_context, _depth_image);
 		});
 }
@@ -195,7 +199,7 @@ void VulkanEngine::init_sync_structures() {
 	VkFenceCreateInfo fence_create_info = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
 	VkSemaphoreCreateInfo semaphore_create_info = vkinit::semaphore_create_info();
 
-	// we seperate the present semaphores to be tied to the amount of swapchain images, as vkQueuePresentKHR cannot signal a semaphore, 
+	// we seperate the present semaphores to be tied to the amount of swapchain images, as vkQueuePresentKHR cannot signal a semaphore
 	// https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
 	_vk_swapchain.init_present_semaphores(semaphore_create_info);
 
@@ -283,6 +287,7 @@ void VulkanEngine::draw() {
 	// transition our main draw image into general layout so we can write into it
 	// we will overwrite it all so we dont care about what was the older layout
 	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vkutil::transition_image(cmd, _resolve_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	vkutil::transition_image(cmd, _depth_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	start_rendering(cmd);
@@ -292,14 +297,14 @@ void VulkanEngine::draw() {
 
 	draw_imgui(cmd, _draw_image.imageView);
 
-	// transition the draw image and the swapchain image into their correct transfer layouts
-	vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	// transition the resolve image and the swapchain image into their correct transfer layouts
+	vkutil::transition_image(cmd, _resolve_image.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	vkutil::transition_image(cmd, _vk_swapchain._swapchain_images[swapchain_image_idx], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// also draw imgui now to save a transition
 
-	// execute a copy from the draw image into the swapchain
-	vkutil::copy_image_to_image(cmd, _draw_image.image, _vk_swapchain._swapchain_images[swapchain_image_idx], _draw_extent, _vk_swapchain._swapchain_extent);
+	// execute a copy from the resolve image into the swapchain
+	vkutil::copy_image_to_image(cmd, _resolve_image.image, _vk_swapchain._swapchain_images[swapchain_image_idx], _draw_extent, _vk_swapchain._swapchain_extent);
 
 	// switch to present
 	vkutil::transition_image(cmd, _vk_swapchain._swapchain_images[swapchain_image_idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
@@ -358,6 +363,9 @@ void VulkanEngine::start_rendering(VkCommandBuffer cmd) {
 	VkClearValue clear_value;
 	clear_value.color = clear_color;
 	VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(_draw_image.imageView, &clear_value, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	color_attachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+	color_attachment.resolveImageView = _resolve_image.imageView;
+	color_attachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	VkRenderingAttachmentInfo depth_attachment = vkinit::depth_attachment_info(_depth_image.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	VkRenderingInfo render_info = vkinit::rendering_info(_draw_extent, &color_attachment, &depth_attachment);
@@ -399,7 +407,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	writer.write_buffer(0, uniform_buffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.update_set(_context.device, global_descriptor);
 
-
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline);
 
 	VkDescriptorSet image_set = get_current_frame()._frame_descriptors.allocate(_context.device, _material_descriptor_layout);
@@ -430,10 +437,11 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 2, 1, &skybox_set, 0, nullptr);
 
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0,-cam_move_test });
+	view = glm::rotate(view, glm::radians(rotation_angle), glm::vec3(0, 1, 0));
 
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
 
-	glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+	glm::mat4 model = glm::mat4(1.f);// glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis
@@ -523,7 +531,7 @@ void VulkanEngine::run()
 
 		if (ImGui::Begin("background")) {
 			ImGui::SliderFloat("Move Cam", &cam_move_test, 0.0f, 10.0f);
-			ImGui::SliderFloat("Rotate Sphere", &rotation_angle, -720.0f, 720.0f);
+			ImGui::SliderFloat("Rotate Cam", &rotation_angle, -720.0f, 720.0f);
 			ImGui::Text("Frame Time: %d", frame_time);
 
 			ImGui::Checkbox("Albedo", &shader_flags_bools[0]);
@@ -736,7 +744,7 @@ void VulkanEngine::init_imgui()
 	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &_draw_image.imageFormat;
 
 
-	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	init_info.MSAASamples = VK_SAMPLE_COUNT_4_BIT;
 
 	ImGui_ImplVulkan_Init(&init_info);
 
@@ -751,8 +759,11 @@ void VulkanEngine::init_imgui()
 
 void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
 {
-	VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	VkRenderingInfo renderInfo = vkinit::rendering_info(_vk_swapchain._swapchain_extent, &colorAttachment, nullptr);
+	VkRenderingAttachmentInfo color_attachment = vkinit::attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	color_attachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+	color_attachment.resolveImageView = _resolve_image.imageView;
+	color_attachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	VkRenderingInfo renderInfo = vkinit::rendering_info(_draw_extent, &color_attachment, nullptr);
 
 	vkCmdBeginRendering(cmd, &renderInfo);
 
@@ -803,7 +814,7 @@ void VulkanEngine::init_mesh_pipeline() {
 	//no backface culling
 	pipeline_builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	//no multisampling
-	pipeline_builder.set_multisampling_none();
+	pipeline_builder.set_multisampling_MSAA();
 
 	pipeline_builder.disable_blending();
 
@@ -868,8 +879,8 @@ void VulkanEngine::init_skybox_pipeline() {
 	pipeline_builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
 	//no backface culling
 	pipeline_builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	//no multisampling
-	pipeline_builder.set_multisampling_none();
+	//ms
+	pipeline_builder.set_multisampling_MSAA();
 
 	pipeline_builder.disable_blending();
 
@@ -923,12 +934,12 @@ void VulkanEngine::init_default_data() {
 		}
 	}
 	_error_checkerboard_image = vkutil::create_image(_context, (void*)pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT, false);
+		VK_IMAGE_USAGE_SAMPLED_BIT, false, VK_SAMPLE_COUNT_1_BIT);
 
 	std::array<uint32_t, 1> black_pix;//TODO: temp
 	black_pix[0] = 0;
 	AllocatedImage black_image = vkutil::create_image(_context, (void*)black_pix.data(), VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT, false);
+		VK_IMAGE_USAGE_SAMPLED_BIT, false, VK_SAMPLE_COUNT_1_BIT);
 
 	_vk_materials.init_materials(_context, black_image);
 
@@ -955,13 +966,13 @@ void VulkanEngine::init_default_data() {
 		});
 
 	GPUSceneData default_data;
-	default_data.light_dir = glm::vec4(-1.0, -1.0, -1.0, 1.0);
+	default_data.light_dir = glm::vec4(1.0, -3.0, -1.0, 1.0);
 	default_data.light_col = glm::vec4(1.0, 1.0, 1.0, 1.0);
 	scene_data = default_data;
 
 	_vk_materials.upload_material("assets/brick");
-	/*_vk_materials.upload_material("assets/steel");
-	_vk_materials.upload_material("assets/rock");*/
+	_vk_materials.upload_material("assets/steel");
+	_vk_materials.upload_material("assets/rock");
 
 	shader_flags_bools[0] = true; // on albedo
 	shader_flags_bools[1] = true; // on normal maps
@@ -998,22 +1009,17 @@ void VulkanEngine::init_default_data() {
 	std::vector<void*> skybox_data;
 	stbi_uc* skybox_pixels;
 
-	skybox_pixels = stbi_load("assets/skybox/negx.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
-	skybox_data.push_back(skybox_pixels);
-
 	skybox_pixels = stbi_load("assets/skybox/posx.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
 	skybox_data.push_back(skybox_pixels);
-
-	skybox_pixels = stbi_load("assets/skybox/negy.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_pixels = stbi_load("assets/skybox/negx.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
 	skybox_data.push_back(skybox_pixels);
-
 	skybox_pixels = stbi_load("assets/skybox/posy.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
 	skybox_data.push_back(skybox_pixels);
-
-	skybox_pixels = stbi_load("assets/skybox/negz.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_pixels = stbi_load("assets/skybox/negy.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
 	skybox_data.push_back(skybox_pixels);
-
 	skybox_pixels = stbi_load("assets/skybox/posz.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
+	skybox_data.push_back(skybox_pixels);
+	skybox_pixels = stbi_load("assets/skybox/negz.jpg", &img_width, &img_height, &img_channels, STBI_rgb_alpha);
 	skybox_data.push_back(skybox_pixels);
 
 	VkExtent3D skybox_extent = { img_width, img_height, 1 };

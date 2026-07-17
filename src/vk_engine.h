@@ -79,6 +79,7 @@ public:
 
 	AllocatedImage _draw_image;
 	AllocatedImage _depth_image;
+	AllocatedImage _resolve_image;
 	VkExtent2D _draw_extent;
 
 	bool stop_rendering{ false };
@@ -124,7 +125,7 @@ public:
 	AllocatedImage _skybox;
 
 	float cam_move_test = 4.0f;
-	float rotation_angle = 180.0f;
+	float rotation_angle = 0.0f;
 	bool shader_flags_bools[6];//0 = albedo, 1 = normals, 2 = roughness, 3 = metalness, 4 = heightfield, 5 = AO
 	uint32_t shader_flags;
 	float displacement_amount = 0.035;

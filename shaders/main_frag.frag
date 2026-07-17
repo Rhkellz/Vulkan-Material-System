@@ -71,9 +71,6 @@ vec3 BRDF(vec3 n, vec3 L, vec3 V, vec3 H, vec3 albedo, float roughness, vec3 F_0
 void main() {
     vec3 normal = normalize(in_normal);
 
-    /*out_frag_color = vec4(in_normal.xyz, 1.0);
-    return;*/
-
     vec3 T = normalize(in_tangent.xyz - dot(in_tangent.xyz, normal) * normal);
     vec3 B = cross(normal, T) * in_tangent.w; 
 
@@ -115,12 +112,12 @@ void main() {
     vec3 active_albedo = albedo * (1.0 - metallic);
     vec3 F_0 = mix(dielectric_F_0, albedo, metallic);
 
-    float ao = 0.0;
+    float ao = 1.0;
 
     if ((PushConstants.flags & 0x20) != 0) {
         ao = texture(AO_tex, uv).x;
     }
-    vec3 ambient_col = vec3(0.02, 0.02, 0.02);
+    vec3 ambient_col = vec3(0.2, 0.2, 0.2);
 
     vec3 col = pi * BRDF(normal, L, V, H, active_albedo, roughness, F_0) * max(0.0, dot(normal, L)) + ao * ambient_col * active_albedo;
 

@@ -202,7 +202,7 @@ AllocatedImage load_image_from_gltf(const Context& context, fastgltf::Asset& ass
 
         if (data) {
             VkExtent3D extent{ (uint32_t)width, (uint32_t)height, 1 };
-            new_image = vkutil::create_image(context, data, extent, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+            new_image = vkutil::create_image(context, data, extent, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true, VK_SAMPLE_COUNT_1_BIT);
             stbi_image_free(data);
         }
         };
@@ -286,7 +286,7 @@ AllocatedImage uploadTexture(const Context& context,std::filesystem::path filena
 
     VkImageUsageFlags tex_flags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;// add more for mip
 
-    AllocatedImage result = vkutil::create_image(context, pixels, tex_extent, tex_format, tex_flags, false);
+    AllocatedImage result = vkutil::create_image(context, pixels, tex_extent, tex_format, tex_flags, false, VK_SAMPLE_COUNT_1_BIT);
     stbi_image_free(pixels);
     return result;
 }

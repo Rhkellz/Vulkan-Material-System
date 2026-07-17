@@ -155,12 +155,12 @@ void vkutil::generate_mips(VkCommandBuffer cmd, VkImage image, VkExtent3D extent
     vkCmdPipelineBarrier2(cmd, &dep_info);
 }
 
-AllocatedImage vkutil::create_image(const Context& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped) {
+AllocatedImage vkutil::create_image(const Context& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped, VkSampleCountFlagBits MSAA_samples) {
     AllocatedImage newImage;
     newImage.imageFormat = format;
     newImage.imageExtent = size;
 
-    VkImageCreateInfo img_info = vkinit::image_create_info(format, usage, size);
+    VkImageCreateInfo img_info = vkinit::image_create_info(format, usage, size, 1, MSAA_samples);
     if (mipmapped) {
         img_info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         img_info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -194,14 +194,14 @@ AllocatedImage vkutil::create_image(const Context& context, VkExtent3D size, VkF
     return newImage;
 }
 
-AllocatedImage vkutil::create_image(const Context& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped) {
+AllocatedImage vkutil::create_image(const Context& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped, VkSampleCountFlagBits MSAA_samples) {
     size_t data_size = size.depth * size.width * size.height * 4;
     AllocatedBuffer uploadbuffer = vkutil::create_buffer(context, data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     memcpy(uploadbuffer.info.pMappedData, data, data_size);
 
     // FIX: Explicitly call the overloaded member function to avoid scope masking bugs
-    AllocatedImage new_image = create_image(context, size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+    AllocatedImage new_image = create_image(context, size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped, MSAA_samples);
 
     // Enforce that size and format are explicitly populated onto the struct right here
     new_image.imageExtent = size;

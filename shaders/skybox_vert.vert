@@ -12,7 +12,7 @@ layout(location = 0) out vec3 out_tex_coords;
 
 void main() 
 {
-    // Array defining the 8 unique corners of a unit cube centered at the origin
+    
     vec3 cube_vertices[8] = vec3[8](
         vec3(-1.0, -1.0,  1.0),
         vec3( 1.0, -1.0,  1.0),
@@ -24,7 +24,7 @@ void main()
         vec3(-1.0,  1.0, -1.0)
     );
 
-    // Index lookup table defining the 36 vertices (12 triangles) needed to render a solid cube
+    
     int cube_indices[36] = int[36](
         0, 1, 2, 2, 3, 0, // Front
         1, 5, 6, 6, 2, 1, // Right
@@ -34,14 +34,11 @@ void main()
         3, 2, 6, 6, 7, 3  // Top
     );
 
-    // Grab the local position for the current vertex execution
     vec3 local_pos = cube_vertices[cube_indices[gl_VertexIndex]];
 
-    // 1. Pass local coordinate out as the 3D sampling vector for the cubemap
     out_tex_coords = local_pos;
 
-    // 2. Transform the position into clip space using your view-projection matrix
-    vec4 clip_pos = PushConstants.render_matrix * vec4(local_pos, 1.0);
+    vec4 clip_pos = PushConstants.render_matrix * PushConstants.model_matrix * vec4(local_pos, 1.0);
 
     // 3. CRITICAL FOR DRAWING LAST WITH REVERSE-Z:
     // Force the depth value to be exactly 0.0 (the absolute farthest plane in Reverse-Z)
