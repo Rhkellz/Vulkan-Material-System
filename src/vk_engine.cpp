@@ -397,7 +397,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	// write into the buffer
 	GPUSceneData* scene_uniform_data = (GPUSceneData*)uniform_buffer.allocation->GetMappedData();
-	scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
+	//scene_data.camera_pos = glm::vec4(0, 0, cam_move_test, 0);//TODO: temp
 	*scene_uniform_data = scene_data;
 
 	// create a descriptor set that binds that buffer and update it
@@ -436,8 +436,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 1, 1, &global_descriptor, 0, nullptr);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline_layout, 2, 1, &skybox_set, 0, nullptr);
 
-	glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0,-cam_move_test });
-	view = glm::rotate(view, glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+	glm::mat4 view = glm::lookAt(glm::vec3{ rad * sin(phi) * cos(theta), rad * cos(phi), rad * sin(phi) * sin(theta) }
+	, glm::vec3{ 0, 0, 0 }, glm::vec3(0, 1, 0));
 
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
 
@@ -473,14 +473,19 @@ void VulkanEngine::draw_skybox(VkCommandBuffer cmd) {
 		writer.update_set(_context.device, skybox_set);
 	}
 
+	glm::mat4 view = glm::lookAt(glm::vec3{ rad * sin(phi) * cos(theta), rad * cos(phi), rad * sin(phi) * sin(theta) }
+	, glm::vec3{ 0, 0, 0 }, glm::vec3(0, 1, 0));
+
+	glm::mat4 skybox_view = glm::mat4(glm::mat3(view));
+
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_draw_extent.width / (float)_draw_extent.height, 10000.f, 0.1f);
 
-	glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(rotation_angle), glm::vec3(0, 1, 0));
+	glm::mat4 model = glm::mat4(1);
 
 	projection[1][1] *= -1;
 
 	GPUSkyboxPushConstants push_constants;
-	push_constants.worldMatrix = projection;
+	push_constants.worldMatrix = projection * skybox_view;
 	push_constants.model = model;
 
 	vkCmdPushConstants(cmd, _skybox_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GPUSkyboxPushConstants), &push_constants);
@@ -511,9 +516,59 @@ void VulkanEngine::run()
 					stop_rendering = false;
 				}
 			}
+
+			if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+				lmb_held = true;
+				SDL_GetMouseState(&last_mouse_x, &last_mouse_y);
+			}
+
+			if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
+				lmb_held = false;
+			}
+
+			if (e.type == SDL_MOUSEWHEEL) {
+				float scroll = e.wheel.y;
+
+				rad += scroll * 0.3f;
+			}
 			ImGui_ImplSDL2_ProcessEvent(&e);
 		}
 
+		if (lmb_held) {
+			int mouse_x, mouse_y;
+			SDL_GetMouseState(&mouse_x, &mouse_y);
+
+			if (first_mouse) {
+				last_mouse_x = mouse_x;
+				last_mouse_y = mouse_y;
+				first_mouse = false;
+			}
+
+			float dx = last_mouse_x - mouse_x;
+			float dy = last_mouse_y - mouse_y;
+
+			last_mouse_x = mouse_x;
+			last_mouse_y = mouse_y;
+
+			float sensitivity = 0.007f;
+			dx *= sensitivity;
+			dy *= sensitivity;
+
+			if (abs(dx) < 0.001 && abs(dy) < 0.001) {
+				dx = 0;
+				dy = 0;
+			}
+
+			phi += dy;
+			theta -= dx;
+
+			if (phi < 0.0001) {
+				phi = 0.0001;
+			}
+			if (phi > 3.14159) {
+				phi = 3.14159;
+			}
+		}
 
 		if (stop_rendering) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -530,8 +585,6 @@ void VulkanEngine::run()
 		ImGui::NewFrame();
 
 		if (ImGui::Begin("background")) {
-			ImGui::SliderFloat("Move Cam", &cam_move_test, 0.0f, 10.0f);
-			ImGui::SliderFloat("Rotate Cam", &rotation_angle, -720.0f, 720.0f);
 			ImGui::Text("Frame Time: %d", frame_time);
 
 			ImGui::Checkbox("Albedo", &shader_flags_bools[0]);

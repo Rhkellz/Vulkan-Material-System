@@ -124,8 +124,15 @@ public:
 
 	AllocatedImage _skybox;
 
-	float cam_move_test = 4.0f;
-	float rotation_angle = 0.0f;
+	float rad = 4.0f;
+	float phi = 1.45f;
+	float theta = 0.0f;
+
+	bool first_mouse = true;
+	int last_mouse_x = 0;
+	int last_mouse_y = 0;
+	bool lmb_held = false;
+
 	bool shader_flags_bools[6];//0 = albedo, 1 = normals, 2 = roughness, 3 = metalness, 4 = heightfield, 5 = AO
 	uint32_t shader_flags;
 	float displacement_amount = 0.035;
